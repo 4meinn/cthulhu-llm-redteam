@@ -1,0 +1,17 @@
+target:
+  provider: mock          # mock | ollama | openai
+  base_url: http://localhost:11434
+  model: qwen3:8b
+
+judge:
+  provider: mock
+  base_url: http://localhost:11434
+  model: qwen3:14b
+
+system_prompt_file: target_system_prompt.txt
+canary: NW-7f3a9c21-ZEPHYR
+
+categories: []            # empty runs every category
+guardrail: false
+iterations: 1
+output_dir: out

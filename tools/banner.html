@@ -1,0 +1,51 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  :root{
+    --bg:#130a0d; --surface2:#30161e; --border:#48202c;
+    --primary:#e06a90; --primary-bright:#ff6fae; --crimson-deep:#9e1b32;
+    --finding:#d6304f; --text:#f4e9ed; --muted:#bc9aa4;
+  }
+  *{margin:0;box-sizing:border-box}
+  html,body{width:1200px;height:340px}
+  .banner{
+    position:relative;width:1200px;height:340px;overflow:hidden;
+    background:
+      radial-gradient(1000px 420px at 50% 30%, #2a121a 0%, #1a0d12 45%, #130a0d 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:'Inter','Inter Display',sans-serif;
+  }
+  .frame{position:absolute;inset:14px;border:1px solid var(--border);border-radius:16px;
+    box-shadow:inset 0 0 90px rgba(158,27,50,.18)}
+  .sigil{position:absolute;top:50%;left:50%;transform:translate(-50%,-52%);opacity:.14}
+  .title{
+    position:relative;font-family:'JetBrains Mono',monospace;font-weight:800;
+    font-size:104px;letter-spacing:.16em;padding-left:.16em;line-height:1;
+    background:linear-gradient(180deg,#ffa6cd 0%,#ff6fae 38%,#e06a90 72%,#c21f3c 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 26px rgba(255,111,174,.38));
+  }
+  .rule{position:relative;width:420px;height:2px;margin:22px 0 18px;
+    background:linear-gradient(90deg,transparent,var(--finding),transparent)}
+  .sub{position:relative;font-weight:600;font-size:23px;letter-spacing:.42em;
+    padding-left:.42em;color:var(--text);text-transform:uppercase}
+  .tag{position:relative;margin-top:16px;font-size:16px;letter-spacing:.06em;color:var(--muted)}
+  .tag b{color:var(--primary);font-weight:600}
+</style></head>
+<body>
+  <div class="banner">
+    <div class="frame"></div>
+    <svg class="sigil" width="300" height="300" viewBox="0 0 300 300" fill="none"
+         stroke="#9e1b32" stroke-width="1.5">
+      <circle cx="150" cy="150" r="140"/>
+      <circle cx="150" cy="150" r="104"/>
+      <circle cx="150" cy="150" r="60"/>
+      <circle cx="150" cy="150" r="20" fill="#d6304f" stroke="none"/>
+      <path d="M150 10 V54 M150 246 V290 M10 150 H54 M246 150 H290
+               M52 52 L83 83 M248 52 L217 83 M52 248 L83 217 M248 248 L217 217"/>
+    </svg>
+    <div class="title">CTHULHU</div>
+    <div class="rule"></div>
+    <div class="sub">LLM Red-Team Toolkit</div>
+    <div class="tag">prompt injection <b>·</b> jailbreak <b>·</b> guardrail before / after <b>·</b> OWASP LLM Top 10</div>
+  </div>
+</body></html>

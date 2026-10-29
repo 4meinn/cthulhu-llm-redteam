@@ -1,4 +1,15 @@
-# Cthulhu
+<div align="center">
+
+<img src="assets/banner.png" alt="Cthulhu, LLM Red-Team Toolkit" width="880">
+
+<p>
+  <img src="assets/badges/license.svg" alt="License: MIT">
+  <img src="assets/badges/python.svg" alt="Python 3.11+">
+  <img src="assets/badges/owasp.svg" alt="OWASP LLM Top 10">
+  <img src="assets/badges/offline.svg" alt="tests: offline">
+</p>
+
+</div>
 
 Prompt injection and jailbreak testing for LLM applications you own. Cthulhu runs a corpus of adversarial prompts against a target assistant whose system prompt hides a planted secret (a canary), decides whether each attack broke the target's rules, applies a defensive guardrail, and reports the before and after mapped to the OWASP LLM Top 10.
 

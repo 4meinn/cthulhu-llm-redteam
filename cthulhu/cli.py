@@ -44,6 +44,9 @@ def _parser() -> argparse.ArgumentParser:
         help="override the config's guardrail setting",
     )
     atk.add_argument("--out", type=Path, help="output directory")
+
+    sv = sub.add_parser("serve", help="run the local web backend on 127.0.0.1")
+    sv.add_argument("--port", type=int, default=8000)
     return p
 
 
@@ -173,6 +176,20 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    try:
+        import uvicorn
+
+        from .web.app import app
+    except ImportError:
+        print('the web backend needs the web extra: pip install -e ".[web]"', file=sys.stderr)
+        return 2
+    # Bind to loopback only. There is deliberately no flag to change the host: a
+    # red-team tool must not be opened to the network by accident.
+    uvicorn.run(app, host="127.0.0.1", port=args.port)
+    return 0
+
+
 def _cmd_list(args: argparse.Namespace) -> int:
     try:
         attacks = load_corpus(args.category)
@@ -192,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args, color)
     if args.command == "attack":
         return _cmd_attack(args, color)
+    if args.command == "serve":
+        return _cmd_serve(args)
     return _cmd_list(args)
 
 

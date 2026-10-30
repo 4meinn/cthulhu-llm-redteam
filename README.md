@@ -3,6 +3,7 @@
 <img src="assets/banner.png" alt="Cthulhu, LLM Red-Team Toolkit" width="880">
 
 <p>
+  <a href="https://github.com/4meinn/cthulhu-llm-redteam/actions/workflows/ci.yml"><img src="https://github.com/4meinn/cthulhu-llm-redteam/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="assets/badges/license.svg" alt="License: MIT">
   <img src="assets/badges/python.svg" alt="Python 3.11+">
   <img src="assets/badges/owasp.svg" alt="OWASP LLM Top 10">

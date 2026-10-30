@@ -20,7 +20,7 @@ Prompt injection and jailbreak testing for LLM applications you own. Cthulhu run
 - **Attack categories**: direct injection, jailbreak, system-prompt leak, indirect injection, encoding evasion
 - **Scoring**: deterministic rules plus an LLM judge, recorded separately
 - **License**: MIT
-- **Status**: v0.1.0, core MVP, validated against a live local model
+- **Status**: v0.2.0, MVP plus the multi-turn adaptive engine, the MVP validated against a live local model
 
 ## Authorized use
 

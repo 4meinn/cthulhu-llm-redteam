@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from . import __version__
+from .attackers import AdaptiveAttacker, CorpusAttacker, DEFAULT_OBJECTIVES, Objective
 from .clients import LLMClient, build_client
 from .config import load_config
+from .conversation import Session, run_campaign
 from .corpus import available_categories, load_corpus
 from .guardrail import Guardrail
 from .report import build_report, write_report
@@ -34,6 +37,15 @@ def _parser() -> argparse.ArgumentParser:
 
     ls = sub.add_parser("list-attacks", help="show the attack corpus")
     ls.add_argument("--category", action="append")
+
+    atk = sub.add_parser("attack", help="run multi-turn adaptive attacks")
+    atk.add_argument("--config", required=True, type=Path)
+    atk.add_argument("--objective", action="append", help="objective id (repeatable)")
+    atk.add_argument(
+        "--guardrail", action=argparse.BooleanOptionalAction, default=None,
+        help="override the config's guardrail setting",
+    )
+    atk.add_argument("--out", type=Path, help="output directory")
     return p
 
 
@@ -99,6 +111,102 @@ def _score(
     return items
 
 
+def _build_attacker(cfg):
+    if cfg.attacker.strategy == "adaptive":
+        if cfg.attacker.endpoint is None:
+            raise SystemExit("adaptive strategy needs an attacker.endpoint in the config")
+        client = build_client(cfg.attacker.endpoint, cfg.canary, role="attacker")
+        return AdaptiveAttacker(client, max_history=cfg.attacker.max_history_turns)
+    return CorpusAttacker(load_corpus(cfg.categories, cfg.corpus_dir))
+
+
+def _resolve_objectives(ids: list[str]) -> list[Objective]:
+    return [DEFAULT_OBJECTIVES.get(oid, Objective(oid, oid)) for oid in ids]
+
+
+def _write_sessions(sessions: list[Session], out_dir: Path) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    data = [
+        {
+            "objective": {"id": s.objective.id, "description": s.objective.description},
+            "success": s.success,
+            "success_turn": s.success_turn,
+            "turns": [
+                {
+                    "tactic": t.move.tactic,
+                    "sent": t.sent,
+                    "response": t.response,
+                    "blocked": t.blocked,
+                    "leaked": t.leaked,
+                    "note": t.note,
+                    "violated": (v.violated if v else None),
+                }
+                for t, v in zip(s.turns, s.verdicts, strict=True)
+            ],
+        }
+        for s in sessions
+    ]
+    path = out_dir / "sessions.json"
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
+    cfg = load_config(args.config)
+    if cfg.attacker is None:
+        print("config has no 'attacker' section; add one to run multi-turn attacks",
+              file=sys.stderr)
+        return 2
+    if args.guardrail is not None:
+        cfg.guardrail = args.guardrail
+    if args.out:
+        cfg.output_dir = args.out
+    if args.objective:
+        cfg.attacker.objectives = args.objective
+
+    rules = cfg.system_prompt()
+    target = build_client(cfg.target, cfg.canary)
+    judge_client = build_client(cfg.judge, cfg.canary, role="judge") if cfg.judge else None
+    attacker = _build_attacker(cfg)
+    objectives = _resolve_objectives(cfg.attacker.objectives)
+    guardrail = Guardrail() if cfg.guardrail else None
+
+    print(paint(BANNER, "primary", color))
+    print(f"{cfg.attacker.strategy} attacker, {len(objectives)} objective(s), "
+          f"up to {cfg.attacker.max_turns} turns, judge={cfg.attacker.judge_mode}, "
+          f"guardrail {'on' if cfg.guardrail else 'off'}")
+
+    def on_event(kind: str, data: dict) -> None:
+        if kind != "turn":
+            return
+        if data.get("blocked"):
+            tag, tone = "blocked", "teal"
+        elif data.get("violated"):
+            tag, tone = "objective met", "crimson"
+        elif data.get("leaked"):
+            tag, tone = "leaked", "crimson"
+        else:
+            tag, tone = "held", "teal"
+        print(f"  [{data['objective']}] turn {data['turn']} ({data.get('tactic', '')}): "
+              + paint(tag, tone, color))
+
+    sessions = run_campaign(
+        attacker, target, objectives,
+        rules=rules, canary=cfg.canary, max_turns=cfg.attacker.max_turns,
+        guardrail=guardrail, judge_client=judge_client,
+        judge_mode=cfg.attacker.judge_mode, scoring=cfg.scoring,
+        max_history_turns=cfg.attacker.max_history_turns,
+        max_message_chars=cfg.attacker.max_message_chars,
+        on_event=on_event,
+    )
+
+    path = _write_sessions(sessions, cfg.output_dir)
+    met = sum(s.success for s in sessions)
+    print(paint(f"{met}/{len(sessions)} objectives met", "crimson" if met else "teal", color))
+    print(f"wrote {path}")
+    return 0
+
+
 def _cmd_list(args: argparse.Namespace) -> int:
     try:
         attacks = load_corpus(args.category)
@@ -116,6 +224,8 @@ def main(argv: list[str] | None = None) -> int:
     color = color_enabled(args.no_color)
     if args.command == "run":
         return _cmd_run(args, color)
+    if args.command == "attack":
+        return _cmd_attack(args, color)
     return _cmd_list(args)
 
 

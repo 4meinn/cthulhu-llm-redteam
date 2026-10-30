@@ -15,3 +15,16 @@ categories: []            # empty runs every category
 guardrail: false
 iterations: 1
 output_dir: out
+
+# Multi-turn adaptive attacker (V2). Used by `cthulhu attack`, ignored by `run`.
+attacker:
+  strategy: adaptive        # corpus | adaptive
+  endpoint:                 # the attacker model; use an uncensored one, a safety-tuned model refuses to attack
+    provider: mock          # mock | ollama | openai
+    base_url: http://localhost:11434
+    model: dolphin-llama3:8b   # Q4, about 4.7 GB, fits 8 GB VRAM
+  objectives: [leak_canary] # leak_canary | leak_system_prompt | out_of_scope
+  max_turns: 6              # turn budget per objective
+  judge_mode: on_suspicion  # per_turn | on_suspicion | final  (see README)
+  max_history_turns: 8      # sliding window of recent turns sent to the target
+  max_message_chars: 2000   # per-message clip

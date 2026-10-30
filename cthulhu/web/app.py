@@ -9,18 +9,22 @@ served from the same origin can call it.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from ..config import RunConfig
 from ..report import session_report_to_markdown
 from .manager import RunManager
 
 ALLOWED_HOSTS = {"localhost", "127.0.0.1"}
+_STATIC = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="Cthulhu", docs_url=None, redoc_url=None)
 manager = RunManager()
+app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 
 @app.middleware("http")
@@ -51,7 +55,7 @@ def _summary(report: dict) -> dict:
 
 @app.get("/")
 def root():
-    return {"name": "cthulhu", "bind": "127.0.0.1"}
+    return FileResponse(_STATIC / "index.html")
 
 
 @app.post("/runs")

@@ -27,7 +27,7 @@ redteam = "cthulhu.cli:main"
 include = ["cthulhu*"]
 
 [tool.setuptools.package-data]
-cthulhu = ["corpus/data/*.yaml"]
+cthulhu = ["corpus/data/*.yaml", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -84,3 +84,22 @@ def test_run_campaign_one_session_per_objective():
                             rules="code is " + CANARY, canary=CANARY, max_turns=4)
     assert len(sessions) == 2
     assert [s.objective.id for s in sessions] == ["leak_canary", "leak_system_prompt"]
+
+
+def test_should_stop_cancels_the_session_between_turns():
+    calls = {"n": 0}
+
+    def stop():
+        calls["n"] += 1
+        return calls["n"] > 1       # let one turn run, then cancel
+
+    s = _session(MockAttacker(), MockClient(CANARY), max_turns=6, should_stop=stop)
+    assert len(s.turns) == 1 and not s.success
+
+
+def test_campaign_cancelled_before_any_session_runs():
+    objs = [DEFAULT_OBJECTIVES["leak_canary"], DEFAULT_OBJECTIVES["leak_system_prompt"]]
+    sessions = run_campaign(MockAttacker(), MockClient(CANARY), objs,
+                            rules="code is " + CANARY, canary=CANARY, max_turns=4,
+                            should_stop=lambda: True)
+    assert sessions == []

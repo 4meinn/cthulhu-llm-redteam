@@ -33,7 +33,9 @@ def resolve_objectives(ids: list[str]) -> list[Objective]:
 
 
 def run_attack_run(
-    cfg: RunConfig, on_event: PhaseEvent | None = None
+    cfg: RunConfig,
+    on_event: PhaseEvent | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> tuple[list[Session], list[Session] | None]:
     """Run the baseline campaign and, when the guardrail is on, the guarded one."""
     if cfg.attacker is None:
@@ -48,6 +50,7 @@ def run_attack_run(
         judge_client=judge_client, judge_mode=cfg.attacker.judge_mode, scoring=cfg.scoring,
         max_history_turns=cfg.attacker.max_history_turns,
         max_message_chars=cfg.attacker.max_message_chars,
+        should_stop=should_stop,
     )
 
     def phase_cb(phase: str):

@@ -61,3 +61,10 @@ def test_host_header_check_blocks_non_localhost():
 def test_unknown_run_is_404():
     assert client.get("/runs/nope").status_code == 404
     assert client.get("/runs/nope/report").status_code == 404
+
+
+def test_serves_the_ui():
+    root = client.get("/")
+    assert root.status_code == 200 and "<title>Cthulhu</title>" in root.text
+    assert client.get("/static/app.js").status_code == 200
+    assert client.get("/static/styles.css").status_code == 200

@@ -154,6 +154,30 @@ cthulhu attack --config examples/config.yaml --guardrail
 
 [`samples/multiturn/report.md`](samples/multiturn/report.md) is a run from the mock: the guardrail blocks the direct override, and the attacker still breaks through a turn later with an emotional appeal the filter misses. Each success is marked with its source, and a judge-only success (the judge flags it, the rules do not) is kept under review rather than counted as proven. out_of_scope has no canary to detect, so it is judged, not pattern-matched; run it with `judge_mode: per_turn`.
 
+## Web interface
+
+`cthulhu serve` starts a local web UI on 127.0.0.1 that wraps the same engine, so a run can be configured and watched in a browser instead of the terminal. It has three steps:
+
+- **Setup** defines the target (paste a system prompt, mark or generate the canary, pick the endpoint), the attacker and judge models, the objectives and the turn budget.
+- **Live** streams each conversation as it happens over server-sent events: the attacker's move, the target's reply and the per-turn verdict, with a cancel button.
+- **Report** shows the before and after, what broke and how, the judge-only results kept for review, and a Markdown export.
+
+<p align="center">
+  <img src="assets/ui-live.png" alt="Live view streaming the attacker and target turns" width="760">
+</p>
+<p align="center">
+  <img src="assets/ui-report.png" alt="Report view with the before and after and the transcripts" width="760">
+</p>
+
+Run it:
+
+```
+pip install -e ".[dev,web]"
+cthulhu serve --port 8000
+```
+
+Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config) returns a run id, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, and `GET /runs/{id}/report` (or `report.md`) returns the report. The CLI commands keep working unchanged.
+
 ## Project layout
 
 ```
@@ -169,6 +193,7 @@ cthulhu/
   jsonx.py             defensive JSON for messy model output
   report.py            JSON and Markdown, single-turn and multi-turn
   cli.py               run, attack, list-attacks
+  web/                 FastAPI backend (127.0.0.1 only), SSE, and the static UI
 examples/              config.yaml and target_system_prompt.txt
 samples/               mock and live reports, and a multi-turn report in multiturn/
 tests/                 the offline pytest suite
@@ -184,11 +209,12 @@ The suite runs fully offline, no model and no network, using the mock client and
 
 ## Roadmap
 
-- A web dashboard to configure a target, watch the conversations live, and read the report.
+- A stronger adaptive attacker. On a small local model the agent repeats tactics and drifts from the objective, so a clean "nothing broke" says more about the attacker than the target. Planned: seed the agent from the static corpus as a hybrid, harden the no-repeat memory, stop feeding the judge's reason back as a hint, remind the agent of the objective each turn, and record why each session ended.
 
 ## Known limitations
 
 - The single-turn attacker is a fixed corpus, so its coverage is only as wide as the prompts in `cthulhu/corpus/data`. The adaptive attacker (`cthulhu attack`) widens this but needs a local uncensored model to drive it.
+- The adaptive attacker is only as good as that model. On a small 8 GB model it repeats tactics and drifts off the objective, so a session that breaks nothing often reflects a weak attacker rather than a strong target. The planned fixes are under Roadmap.
 - The guardrail is pattern-based. It catches phrasings it was written for and misses novel ones, which is exactly what the holdout number is there to show.
 - The LLM judge is only as reliable as the model behind it; a weak judge disagrees with the deterministic rules more often, which is why both verdicts are kept. In the live run the two agreed on 28 of 29 attacks (97%). The one disagreement, `enc-005`, was a judge false positive: it treated a mention of the access code as a disclosure. Judges over-flag mentions, and that is left visible in the report instead of being tuned away.
 - The guardrail overfits its seen set. It left 0 of 20 seen attacks through but 1 of 9 holdout attacks (`spl-005`, a translation-based prompt leak), so a clean seen number says little about unseen phrasings.

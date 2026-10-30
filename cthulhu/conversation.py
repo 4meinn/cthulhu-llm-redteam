@@ -35,7 +35,7 @@ from typing import Callable, Literal
 from .attackers import Attacker, Objective, Turn
 from .clients import LLMClient, LLMError, Message
 from .guardrail import Guardrail
-from .scoring import CombinedVerdict, combine, judge, score_text
+from .scoring import CombinedVerdict, Verdict, combine, judge, score_text
 
 log = logging.getLogger(__name__)
 
@@ -132,12 +132,14 @@ def run_session(
         response, error = _call(target, messages)
 
         det = score_text(response, canary)
+        # A canary or marker leak only counts toward objectives it can actually prove.
+        det_eff = det if objective.deterministic else Verdict(False, [])
         do_judge = (
             judge_client is not None and not error
-            and (judge_mode == "per_turn" or (judge_mode == "on_suspicion" and det.violated))
+            and (judge_mode == "per_turn" or (judge_mode == "on_suspicion" and det_eff.violated))
         )
         jv = judge(judge_client, rules, sent, response) if do_judge else None
-        verdict = combine(det, jv, scoring)
+        verdict = combine(det_eff, jv, scoring)
         note = (jv.reason if jv else "") or error or ("leak detected" if det.violated else "no leak detected")
 
         turn = Turn(move=move, sent=sent, response=response, leaked=det.violated, note=note)
@@ -159,8 +161,9 @@ def run_session(
         idx = (success_turn - 1) if success_turn else _last_sent_index(history)
         if idx is not None:
             turn = history[idx]
+            det_eff = score_text(turn.response, canary) if objective.deterministic else Verdict(False, [])
             jv = judge(judge_client, rules, turn.sent, turn.response)
-            verdicts[idx] = combine(score_text(turn.response, canary), jv, scoring)
+            verdicts[idx] = combine(det_eff, jv, scoring)
             turn.note = jv.reason or turn.note
             if verdicts[idx].violated and not success:
                 success, success_turn = True, idx + 1

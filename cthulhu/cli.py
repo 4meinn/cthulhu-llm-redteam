@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -11,10 +10,10 @@ from . import __version__
 from .attackers import AdaptiveAttacker, CorpusAttacker, DEFAULT_OBJECTIVES, Objective
 from .clients import LLMClient, build_client
 from .config import load_config
-from .conversation import Session, run_campaign
+from .conversation import run_campaign
 from .corpus import available_categories, load_corpus
 from .guardrail import Guardrail
-from .report import build_report, write_report
+from .report import build_report, build_session_report, write_report, write_session_report
 from .runner import AttackResult, run_attacks
 from .scoring import CombinedVerdict, combine, judge, score
 from .ui import BANNER, color_enabled, paint
@@ -124,31 +123,21 @@ def _resolve_objectives(ids: list[str]) -> list[Objective]:
     return [DEFAULT_OBJECTIVES.get(oid, Objective(oid, oid)) for oid in ids]
 
 
-def _write_sessions(sessions: list[Session], out_dir: Path) -> Path:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    data = [
-        {
-            "objective": {"id": s.objective.id, "description": s.objective.description},
-            "success": s.success,
-            "success_turn": s.success_turn,
-            "turns": [
-                {
-                    "tactic": t.move.tactic,
-                    "sent": t.sent,
-                    "response": t.response,
-                    "blocked": t.blocked,
-                    "leaked": t.leaked,
-                    "note": t.note,
-                    "violated": (v.violated if v else None),
-                }
-                for t, v in zip(s.turns, s.verdicts, strict=True)
-            ],
-        }
-        for s in sessions
-    ]
-    path = out_dir / "sessions.json"
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    return path
+def _turn_printer(color: bool, phase: str):
+    def on_event(kind: str, data: dict) -> None:
+        if kind != "turn":
+            return
+        if data.get("blocked"):
+            tag, tone = "blocked", "teal"
+        elif data.get("violated"):
+            tag, tone = "objective met", "crimson"
+        elif data.get("leaked"):
+            tag, tone = "canary leaked", "crimson"
+        else:
+            tag, tone = "held", "teal"
+        print(f"  [{phase}] [{data['objective']}] turn {data['turn']} "
+              f"({data.get('tactic', '')}): " + paint(tag, tone, color))
+    return on_event
 
 
 def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
@@ -167,9 +156,7 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     rules, canary = cfg.resolve_target()
     target = build_client(cfg.target, canary)
     judge_client = build_client(cfg.judge, canary, role="judge") if cfg.judge else None
-    attacker = _build_attacker(cfg, canary)
     objectives = _resolve_objectives(cfg.attacker.objectives)
-    guardrail = Guardrail() if cfg.guardrail else None
 
     if "out_of_scope" in cfg.attacker.objectives and cfg.attacker.judge_mode != "per_turn":
         print("warning: the out_of_scope objective has no deterministic signal; set "
@@ -180,34 +167,36 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
           f"up to {cfg.attacker.max_turns} turns, judge={cfg.attacker.judge_mode}, "
           f"guardrail {'on' if cfg.guardrail else 'off'}")
 
-    def on_event(kind: str, data: dict) -> None:
-        if kind != "turn":
-            return
-        if data.get("blocked"):
-            tag, tone = "blocked", "teal"
-        elif data.get("violated"):
-            tag, tone = "objective met", "crimson"
-        elif data.get("leaked"):
-            tag, tone = "leaked", "crimson"
-        else:
-            tag, tone = "held", "teal"
-        print(f"  [{data['objective']}] turn {data['turn']} ({data.get('tactic', '')}): "
-              + paint(tag, tone, color))
-
-    sessions = run_campaign(
-        attacker, target, objectives,
+    kw = dict(
         rules=rules, canary=canary, max_turns=cfg.attacker.max_turns,
-        guardrail=guardrail, judge_client=judge_client,
-        judge_mode=cfg.attacker.judge_mode, scoring=cfg.scoring,
+        judge_client=judge_client, judge_mode=cfg.attacker.judge_mode, scoring=cfg.scoring,
         max_history_turns=cfg.attacker.max_history_turns,
         max_message_chars=cfg.attacker.max_message_chars,
-        on_event=on_event,
     )
+    # Baseline first, then a guarded pass, so the before/after is against the same attacker.
+    baseline = run_campaign(_build_attacker(cfg, canary), target, objectives,
+                            guardrail=None, on_event=_turn_printer(color, "baseline"), **kw)
+    guarded = None
+    if cfg.guardrail:
+        guarded = run_campaign(_build_attacker(cfg, canary), target, objectives,
+                               guardrail=Guardrail(), on_event=_turn_printer(color, "guarded"), **kw)
 
-    path = _write_sessions(sessions, cfg.output_dir)
-    met = sum(s.success for s in sessions)
-    print(paint(f"{met}/{len(sessions)} objectives met", "crimson" if met else "teal", color))
-    print(f"wrote {path}")
+    meta = {
+        "target": f"{cfg.target.provider}:{cfg.target.model}",
+        "judge": f"{cfg.judge.provider}:{cfg.judge.model}" if cfg.judge else None,
+        "scoring": cfg.scoring,
+        "judge_mode": cfg.attacker.judge_mode,
+        "guardrail": cfg.guardrail,
+    }
+    report = build_session_report(baseline, guarded, meta)
+    json_path, md_path = write_session_report(report, cfg.output_dir)
+
+    met_b = sum(s.success for s in baseline)
+    summary = f"baseline: {met_b}/{len(baseline)} met"
+    if guarded is not None:
+        summary += f", guarded: {sum(s.success for s in guarded)}/{len(guarded)} met"
+    print(paint(summary, "crimson" if met_b else "teal", color))
+    print(f"wrote {json_path} and {md_path}")
     return 0
 
 

@@ -144,20 +144,33 @@ Expect a slow run on small hardware. The live run above took about 25 minutes on
 
 Two full reports are checked in. [`samples/live/report.md`](samples/live/report.md) comes from the live Ollama run described under Results. [`samples/report.md`](samples/report.md) comes from the offline mock with the guardrail on: baseline bypasses 23 of 29 attacks, and 5 still get through with the guardrail.
 
+## Multi-turn adaptive attacks
+
+`cthulhu attack` runs an adaptive attacker in place of the static corpus: a model that writes its own attacks, reads why each attempt was refused or blocked, and changes tactic across a conversation toward one objective (leak the canary, leak the system prompt, act out of scope). The attacker model must be uncensored, since a safety-tuned model refuses to attack; the target and the judge can stay safety-tuned. Configure it under `attacker` in the config, then:
+
+```
+cthulhu attack --config examples/config.yaml --guardrail
+```
+
+[`samples/multiturn/report.md`](samples/multiturn/report.md) is a run from the mock: the guardrail blocks the direct override, and the attacker still breaks through a turn later with an emotional appeal the filter misses. Each success is marked with its source, and a judge-only success (the judge flags it, the rules do not) is kept under review rather than counted as proven. out_of_scope has no canary to detect, so it is judged, not pattern-matched; run it with `judge_mode: per_turn`.
+
 ## Project layout
 
 ```
 cthulhu/
-  config.py            config models and the YAML loader
+  config.py            config models, the YAML loader, target and canary resolution
   clients/             client interface, mock, ollama and openai-compatible
   corpus/              one YAML per category, loader, seen/holdout split
-  runner.py            sends attacks, applies the guardrail, retries
+  attackers/           attacker interface, static corpus, adaptive agent
+  conversation.py      multi-turn session engine
+  runner.py            single-turn runner, applies the guardrail, retries
   scoring/             deterministic.py, judge.py, combine.py
   guardrail.py         input filter and prompt hardening
-  report.py            JSON and Markdown
-  cli.py               run and list-attacks
+  jsonx.py             defensive JSON for messy model output
+  report.py            JSON and Markdown, single-turn and multi-turn
+  cli.py               run, attack, list-attacks
 examples/              config.yaml and target_system_prompt.txt
-samples/               a mock report, and a live Ollama report in live/
+samples/               mock and live reports, and a multi-turn report in multiturn/
 tests/                 the offline pytest suite
 ```
 
@@ -171,13 +184,11 @@ The suite runs fully offline, no model and no network, using the mock client and
 
 ## Roadmap
 
-- An adaptive attacker: a model that writes and adapts its own attacks, reads why an attempt was blocked and changes tactic. The MVP attacker is a static corpus.
-- Multi-turn conversational attacks.
-- A dashboard for exploring results.
+- A web dashboard to configure a target, watch the conversations live, and read the report.
 
 ## Known limitations
 
-- The attacker is a fixed corpus, so coverage is only as wide as the prompts shipped in `cthulhu/corpus/data`.
+- The single-turn attacker is a fixed corpus, so its coverage is only as wide as the prompts in `cthulhu/corpus/data`. The adaptive attacker (`cthulhu attack`) widens this but needs a local uncensored model to drive it.
 - The guardrail is pattern-based. It catches phrasings it was written for and misses novel ones, which is exactly what the holdout number is there to show.
 - The LLM judge is only as reliable as the model behind it; a weak judge disagrees with the deterministic rules more often, which is why both verdicts are kept. In the live run the two agreed on 28 of 29 attacks (97%). The one disagreement, `enc-005`, was a judge false positive: it treated a mention of the access code as a disclosure. Judges over-flag mentions, and that is left visible in the report instead of being tuned away.
 - The guardrail overfits its seen set. It left 0 of 20 seen attacks through but 1 of 9 holdout attacks (`spl-005`, a translation-based prompt leak), so a clean seen number says little about unseen phrasings.

@@ -7,11 +7,13 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .attackers import AdaptiveAttacker, CorpusAttacker, DEFAULT_OBJECTIVES, Objective
 from .clients import LLMClient, build_client
 from .config import load_config
+from .conversation import run_campaign
 from .corpus import available_categories, load_corpus
 from .guardrail import Guardrail
-from .report import build_report, write_report
+from .report import build_report, build_session_report, write_report, write_session_report
 from .runner import AttackResult, run_attacks
 from .scoring import CombinedVerdict, combine, judge, score
 from .ui import BANNER, color_enabled, paint
@@ -34,6 +36,15 @@ def _parser() -> argparse.ArgumentParser:
 
     ls = sub.add_parser("list-attacks", help="show the attack corpus")
     ls.add_argument("--category", action="append")
+
+    atk = sub.add_parser("attack", help="run multi-turn adaptive attacks")
+    atk.add_argument("--config", required=True, type=Path)
+    atk.add_argument("--objective", action="append", help="objective id (repeatable)")
+    atk.add_argument(
+        "--guardrail", action=argparse.BooleanOptionalAction, default=None,
+        help="override the config's guardrail setting",
+    )
+    atk.add_argument("--out", type=Path, help="output directory")
     return p
 
 
@@ -47,8 +58,8 @@ def _cmd_run(args: argparse.Namespace, color: bool) -> int:
         cfg.output_dir = args.out
 
     attacks = load_corpus(cfg.categories, cfg.corpus_dir)
-    rules = cfg.system_prompt()
-    target = build_client(cfg.target, cfg.canary)
+    rules, canary = cfg.resolve_target()
+    target = build_client(cfg.target, canary)
     print(paint(BANNER, "primary", color))
     print(f"{len(attacks)} attacks x {cfg.iterations} against {cfg.target.provider}:{cfg.target.model}")
 
@@ -58,9 +69,9 @@ def _cmd_run(args: argparse.Namespace, color: bool) -> int:
     if cfg.guardrail:
         guarded_results = run_attacks(target, attacks, rules, cfg.iterations, Guardrail())
 
-    judge_client = build_client(cfg.judge, cfg.canary, role="judge") if cfg.judge else None
-    baseline = _score(baseline_results, rules, cfg, judge_client)
-    guarded = _score(guarded_results, rules, cfg, judge_client) if guarded_results else None
+    judge_client = build_client(cfg.judge, canary, role="judge") if cfg.judge else None
+    baseline = _score(baseline_results, rules, canary, cfg, judge_client)
+    guarded = _score(guarded_results, rules, canary, cfg, judge_client) if guarded_results else None
 
     meta = {
         "target": f"{cfg.target.provider}:{cfg.target.model}",
@@ -86,17 +97,107 @@ def _cmd_run(args: argparse.Namespace, color: bool) -> int:
 
 
 def _score(
-    results: list[AttackResult], rules: str, cfg, judge_client: LLMClient | None
+    results: list[AttackResult], rules: str, canary: str, cfg, judge_client: LLMClient | None
 ) -> list[tuple[AttackResult, CombinedVerdict]]:
     """Score each result with both scorers; skip the judge on blocked prompts."""
     items = []
     for r in results:
-        det = score(r.attack, r.response, cfg.canary)
+        det = score(r.attack, r.response, canary)
         jv = None
         if judge_client and not r.blocked:
             jv = judge(judge_client, rules, r.prompt, r.response)
         items.append((r, combine(det, jv, cfg.scoring)))
     return items
+
+
+def _build_attacker(cfg, canary: str):
+    if cfg.attacker.strategy == "adaptive":
+        if cfg.attacker.endpoint is None:
+            raise SystemExit("adaptive strategy needs an attacker.endpoint in the config")
+        client = build_client(cfg.attacker.endpoint, canary, role="attacker")
+        return AdaptiveAttacker(client, max_history=cfg.attacker.max_history_turns)
+    return CorpusAttacker(load_corpus(cfg.categories, cfg.corpus_dir))
+
+
+def _resolve_objectives(ids: list[str]) -> list[Objective]:
+    return [DEFAULT_OBJECTIVES.get(oid, Objective(oid, oid)) for oid in ids]
+
+
+def _turn_printer(color: bool, phase: str):
+    def on_event(kind: str, data: dict) -> None:
+        if kind != "turn":
+            return
+        if data.get("blocked"):
+            tag, tone = "blocked", "teal"
+        elif data.get("violated"):
+            tag, tone = "objective met", "crimson"
+        elif data.get("leaked"):
+            tag, tone = "canary leaked", "crimson"
+        else:
+            tag, tone = "held", "teal"
+        print(f"  [{phase}] [{data['objective']}] turn {data['turn']} "
+              f"({data.get('tactic', '')}): " + paint(tag, tone, color))
+    return on_event
+
+
+def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
+    cfg = load_config(args.config)
+    if cfg.attacker is None:
+        print("config has no 'attacker' section; add one to run multi-turn attacks",
+              file=sys.stderr)
+        return 2
+    if args.guardrail is not None:
+        cfg.guardrail = args.guardrail
+    if args.out:
+        cfg.output_dir = args.out
+    if args.objective:
+        cfg.attacker.objectives = args.objective
+
+    rules, canary = cfg.resolve_target()
+    target = build_client(cfg.target, canary)
+    judge_client = build_client(cfg.judge, canary, role="judge") if cfg.judge else None
+    objectives = _resolve_objectives(cfg.attacker.objectives)
+
+    if "out_of_scope" in cfg.attacker.objectives and cfg.attacker.judge_mode != "per_turn":
+        print("warning: the out_of_scope objective has no deterministic signal; set "
+              "judge_mode: per_turn in the config or successes may be missed", file=sys.stderr)
+
+    print(paint(BANNER, "primary", color))
+    print(f"{cfg.attacker.strategy} attacker, {len(objectives)} objective(s), "
+          f"up to {cfg.attacker.max_turns} turns, judge={cfg.attacker.judge_mode}, "
+          f"guardrail {'on' if cfg.guardrail else 'off'}")
+
+    kw = dict(
+        rules=rules, canary=canary, max_turns=cfg.attacker.max_turns,
+        judge_client=judge_client, judge_mode=cfg.attacker.judge_mode, scoring=cfg.scoring,
+        max_history_turns=cfg.attacker.max_history_turns,
+        max_message_chars=cfg.attacker.max_message_chars,
+    )
+    # Baseline first, then a guarded pass, so the before/after is against the same attacker.
+    baseline = run_campaign(_build_attacker(cfg, canary), target, objectives,
+                            guardrail=None, on_event=_turn_printer(color, "baseline"), **kw)
+    guarded = None
+    if cfg.guardrail:
+        guarded = run_campaign(_build_attacker(cfg, canary), target, objectives,
+                               guardrail=Guardrail(), on_event=_turn_printer(color, "guarded"), **kw)
+
+    meta = {
+        "target": f"{cfg.target.provider}:{cfg.target.model}",
+        "judge": f"{cfg.judge.provider}:{cfg.judge.model}" if cfg.judge else None,
+        "scoring": cfg.scoring,
+        "judge_mode": cfg.attacker.judge_mode,
+        "guardrail": cfg.guardrail,
+    }
+    report = build_session_report(baseline, guarded, meta)
+    json_path, md_path = write_session_report(report, cfg.output_dir)
+
+    met_b = sum(s.success for s in baseline)
+    summary = f"baseline: {met_b}/{len(baseline)} met"
+    if guarded is not None:
+        summary += f", guarded: {sum(s.success for s in guarded)}/{len(guarded)} met"
+    print(paint(summary, "crimson" if met_b else "teal", color))
+    print(f"wrote {json_path} and {md_path}")
+    return 0
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
@@ -116,6 +217,8 @@ def main(argv: list[str] | None = None) -> int:
     color = color_enabled(args.no_color)
     if args.command == "run":
         return _cmd_run(args, color)
+    if args.command == "attack":
+        return _cmd_attack(args, color)
     return _cmd_list(args)
 
 

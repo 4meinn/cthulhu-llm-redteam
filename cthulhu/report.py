@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Callable
 
+from .conversation import Session
 from .corpus import partition as default_partition
 from .runner import AttackResult
 from .scoring import CombinedVerdict, agreement_rate
@@ -202,4 +203,196 @@ def write_report(report: dict, out_dir: Path) -> tuple[Path, Path]:
     md_path = out_dir / "report.md"
     json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     md_path.write_text(to_markdown(report), encoding="utf-8")
+    return json_path, md_path
+
+
+# --- multi-turn session reports ---------------------------------------------
+
+OBJECTIVE_OWASP = {
+    "leak_canary": "LLM01, sensitive information disclosure",
+    "leak_system_prompt": "LLM01, sensitive information disclosure",
+    "out_of_scope": "LLM01, prompt injection and excessive agency",
+}
+
+
+def _success_source(session: Session) -> tuple[str | None, bool]:
+    """Return (source, needs_review) for a session's success.
+
+    needs_review marks a judge-only win: the judge flagged a violation the rules
+    did not, so it is surfaced for a human, not counted as proven.
+    """
+    if not session.success or session.success_turn is None:
+        return None, False
+    verdict = session.verdicts[session.success_turn - 1]
+    if verdict is None:
+        return "unknown", False
+    if verdict.deterministic.reasons:
+        return "; ".join(verdict.deterministic.reasons), False
+    if verdict.judge is not None and verdict.judge.violated:
+        return "judge said violated", True
+    return "unknown", False
+
+
+def _session_dict(session: Session) -> dict:
+    source, needs_review = _success_source(session)
+    return {
+        "objective": {
+            "id": session.objective.id,
+            "description": session.objective.description,
+            "deterministic": session.objective.deterministic,
+        },
+        "success": session.success,
+        "success_turn": session.success_turn,
+        "source": source,
+        "needs_review": needs_review,
+        "turns": [
+            {
+                "tactic": t.move.tactic,
+                "sent": t.sent,
+                "response": t.response,
+                "blocked": t.blocked,
+                "leaked": t.leaked,
+                "note": t.note,
+                "violated": (v.violated if v else None),
+                "judged": (v is not None and v.judge is not None),
+            }
+            for t, v in zip(session.turns, session.verdicts, strict=True)
+        ],
+    }
+
+
+def _session_verdicts(*session_lists: list[Session]) -> list[CombinedVerdict]:
+    out: list[CombinedVerdict] = []
+    for sessions in session_lists:
+        for s in sessions:
+            out.extend(v for v in s.verdicts if v is not None)
+    return out
+
+
+def build_session_report(
+    baseline: list[Session], guarded: list[Session] | None, meta: dict
+) -> dict:
+    """Assemble the multi-turn report from the baseline and optional guarded campaigns."""
+    rate = agreement_rate(_session_verdicts(baseline, guarded or []))
+    objectives, seen = [], set()
+    for s in baseline:
+        if s.objective.id not in seen:
+            seen.add(s.objective.id)
+            objectives.append({
+                "id": s.objective.id,
+                "deterministic": s.objective.deterministic,
+                "owasp": OBJECTIVE_OWASP.get(s.objective.id, "LLM01"),
+            })
+    return {
+        "meta": {**meta, "has_guarded": guarded is not None,
+                 "judge_agreement": None if rate is None else round(rate, 3)},
+        "objectives": objectives,
+        "baseline": [_session_dict(s) for s in baseline],
+        "guarded": None if guarded is None else [_session_dict(s) for s in guarded],
+    }
+
+
+def _outcome(session: dict | None) -> str:
+    if session is None:
+        return "n/a"
+    if not session["success"]:
+        return "held"
+    tag = "met (needs review)" if session["needs_review"] else "met"
+    return f"{tag} @ turn {session['success_turn']}"
+
+
+def _by_objective(sessions: list[dict]) -> dict[str, dict]:
+    return {s["objective"]["id"]: s for s in sessions}
+
+
+def _transcript(session: dict, lines: list[str]) -> None:
+    for i, t in enumerate(session["turns"], 1):
+        if t["blocked"]:
+            outcome = "blocked by guardrail"
+        elif t["violated"]:
+            outcome = "objective met"
+        elif t["leaked"]:
+            outcome = "canary leaked (not this objective's signal)"
+        else:
+            outcome = "held"
+        lines.append(f"{i}. **{t['tactic']}** -> {outcome}")
+        lines.append(f"   - sent: {t['sent'][:140]}")
+        if not t["blocked"]:
+            reply = t["response"]
+            lines.append(f"   - reply: {reply[:110] + '...' if len(reply) > 110 else reply}")
+        if t["note"]:
+            lines.append(f"   - note: {t['note']}")
+
+
+def session_report_to_markdown(report: dict) -> str:
+    meta = report["meta"]
+    guarded = meta["has_guarded"]
+    g_by = _by_objective(report["guarded"]) if guarded else {}
+    b_by = _by_objective(report["baseline"])
+
+    lines = [
+        "# Cthulhu multi-turn report",
+        "",
+        f"- Target: `{meta.get('target', '?')}`",
+        f"- Judge: `{meta.get('judge') or 'none'}`",
+        f"- Scoring policy: {meta.get('scoring', 'any')}",
+        f"- Judge mode: {meta.get('judge_mode', '?')}",
+        f"- Guardrail: {'on (baseline vs guarded below)' if guarded else 'off'}",
+    ]
+    if meta.get("judge_agreement") is not None:
+        lines.append(f"- Judge / rule agreement: {meta['judge_agreement']:.0%}")
+
+    lines += ["", "## Objectives", ""]
+    lines.append("| Objective | Signal | OWASP | Baseline |" + (" Guarded |" if guarded else ""))
+    lines.append("|---|---|---|---|" + ("---|" if guarded else ""))
+    for obj in report["objectives"]:
+        signal = "deterministic and judge" if obj["deterministic"] else "judge only"
+        row = f"| `{obj['id']}` | {signal} | {obj['owasp']} | {_outcome(b_by.get(obj['id']))} |"
+        if guarded:
+            row += f" {_outcome(g_by.get(obj['id']))} |"
+        lines.append(row)
+
+    lines += ["", "## What broke and how", ""]
+    phases = [("baseline", report["baseline"])] + ([("guarded", report["guarded"])] if guarded else [])
+    broke = [(ph, s) for ph, sessions in phases for s in sessions if s["success"]]
+    if not broke:
+        lines.append("No objective was met in this run.")
+    for ph, s in broke:
+        lines.append(f"- `{s['objective']['id']}` ({ph}): {_outcome(s)} via {s['source']}")
+
+    review = [(ph, s) for ph, sessions in phases for s in sessions if s["needs_review"]]
+    lines += ["", "## Needs review (judge only)", ""]
+    if not review:
+        lines.append("None. Every success had a deterministic signal.")
+    else:
+        lines.append("The judge flagged these, the deterministic rules did not. Confirm by hand.")
+        for ph, s in review:
+            lines.append(f"- `{s['objective']['id']}` ({ph}, turn {s['success_turn']})")
+
+    lines += ["", "## Transcripts", ""]
+    for ph, sessions in phases:
+        for s in sessions:
+            lines.append(f"### {s['objective']['id']} ({ph})")
+            lines.append("")
+            _transcript(s, lines)
+            lines.append("")
+
+    lines += [
+        "## Notes",
+        "",
+        "A canary or marker leak proves the disclosure objectives. out_of_scope has "
+        "no such deterministic signal, so it is measured by the judge, run it with "
+        "judge_mode: per_turn. A judge-only success is listed under review, not "
+        "counted as proven.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def write_session_report(report: dict, out_dir: Path) -> tuple[Path, Path]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / "report.json"
+    md_path = out_dir / "report.md"
+    json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    md_path.write_text(session_report_to_markdown(report), encoding="utf-8")
     return json_path, md_path

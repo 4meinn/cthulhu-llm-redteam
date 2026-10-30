@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cthulhu"
-version = "0.1.0"
+version = "0.2.0"
 description = "Prompt injection and jailbreak testing for LLM applications you own."
 readme = "README.md"
 requires-python = ">=3.11"

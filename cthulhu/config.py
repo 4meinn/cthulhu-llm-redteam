@@ -21,6 +21,18 @@ class EndpointConfig(BaseModel):
     timeout: float = 120.0
 
 
+class AttackerConfig(BaseModel):
+    """The adaptive, multi-turn attacker (V2). The single-turn `run` ignores this."""
+
+    strategy: Literal["corpus", "adaptive"] = "corpus"
+    endpoint: EndpointConfig | None = None   # required for adaptive; use an uncensored model
+    objectives: list[str] = Field(default_factory=lambda: ["leak_canary"])
+    max_turns: int = Field(default=6, ge=1)             # turn budget per session
+    judge_mode: Literal["per_turn", "on_suspicion", "final"] = "on_suspicion"
+    max_history_turns: int = Field(default=8, ge=1)     # sliding window sent to the target
+    max_message_chars: int = Field(default=2000, ge=1)  # per-message clip
+
+
 class RunConfig(BaseModel):
     """Everything needed for one test run."""
 
@@ -33,6 +45,7 @@ class RunConfig(BaseModel):
     scoring: Literal["any", "all", "deterministic", "judge"] = "any"
     guardrail: bool = False
     iterations: int = Field(default=1, ge=1)
+    attacker: AttackerConfig | None = None
     output_dir: Path = Path("out")
 
     def system_prompt(self) -> str:

@@ -45,9 +45,13 @@ def _as_bool(value: object) -> bool:
 
 
 class AdaptiveAttacker(Attacker):
-    def __init__(self, client: LLMClient, max_attempts: int = 8) -> None:
+    def __init__(self, client: LLMClient, max_attempts: int | None = None,
+                 max_history: int = 6) -> None:
+        # max_attempts is an optional safety cap. The conversation engine owns the
+        # real per-session turn budget (max_turns), so this stays None by default.
         self._client = client
         self._max = max_attempts
+        self._max_history = max_history
         self._objective: Objective | None = None
         self._tried: list[str] = []
 
@@ -56,7 +60,9 @@ class AdaptiveAttacker(Attacker):
         self._tried = []
 
     def next_move(self, history: list[Turn]) -> AttackMove | None:
-        if self._objective is None or len(history) >= self._max:
+        if self._objective is None:
+            return None
+        if self._max is not None and len(history) >= self._max:
             return None
         try:
             raw = self._client.chat(self._build(history))
@@ -74,9 +80,10 @@ class AdaptiveAttacker(Attacker):
     def _build(self, history: list[Turn]) -> list[Message]:
         assert self._objective is not None
         lines = [f"Objective: {self._objective.description}", ""]
-        if history:
-            lines.append("Exchanges so far:")
-            for i, turn in enumerate(history, 1):
+        recent = history[-self._max_history:]   # window the view; self._tried stays complete
+        if recent:
+            lines.append("Recent exchanges:")
+            for i, turn in enumerate(recent, 1):
                 reply = "[blocked by the guardrail]" if turn.blocked else turn.response[:_RESPONSE_CLIP]
                 lines.append(f"{i}. you sent: {turn.move.prompt[:_RESPONSE_CLIP]}")
                 lines.append(f"   target replied: {reply}")

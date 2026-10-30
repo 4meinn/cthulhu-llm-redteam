@@ -59,8 +59,8 @@ def _cmd_run(args: argparse.Namespace, color: bool) -> int:
         cfg.output_dir = args.out
 
     attacks = load_corpus(cfg.categories, cfg.corpus_dir)
-    rules = cfg.system_prompt()
-    target = build_client(cfg.target, cfg.canary)
+    rules, canary = cfg.resolve_target()
+    target = build_client(cfg.target, canary)
     print(paint(BANNER, "primary", color))
     print(f"{len(attacks)} attacks x {cfg.iterations} against {cfg.target.provider}:{cfg.target.model}")
 
@@ -70,9 +70,9 @@ def _cmd_run(args: argparse.Namespace, color: bool) -> int:
     if cfg.guardrail:
         guarded_results = run_attacks(target, attacks, rules, cfg.iterations, Guardrail())
 
-    judge_client = build_client(cfg.judge, cfg.canary, role="judge") if cfg.judge else None
-    baseline = _score(baseline_results, rules, cfg, judge_client)
-    guarded = _score(guarded_results, rules, cfg, judge_client) if guarded_results else None
+    judge_client = build_client(cfg.judge, canary, role="judge") if cfg.judge else None
+    baseline = _score(baseline_results, rules, canary, cfg, judge_client)
+    guarded = _score(guarded_results, rules, canary, cfg, judge_client) if guarded_results else None
 
     meta = {
         "target": f"{cfg.target.provider}:{cfg.target.model}",
@@ -98,12 +98,12 @@ def _cmd_run(args: argparse.Namespace, color: bool) -> int:
 
 
 def _score(
-    results: list[AttackResult], rules: str, cfg, judge_client: LLMClient | None
+    results: list[AttackResult], rules: str, canary: str, cfg, judge_client: LLMClient | None
 ) -> list[tuple[AttackResult, CombinedVerdict]]:
     """Score each result with both scorers; skip the judge on blocked prompts."""
     items = []
     for r in results:
-        det = score(r.attack, r.response, cfg.canary)
+        det = score(r.attack, r.response, canary)
         jv = None
         if judge_client and not r.blocked:
             jv = judge(judge_client, rules, r.prompt, r.response)
@@ -111,11 +111,11 @@ def _score(
     return items
 
 
-def _build_attacker(cfg):
+def _build_attacker(cfg, canary: str):
     if cfg.attacker.strategy == "adaptive":
         if cfg.attacker.endpoint is None:
             raise SystemExit("adaptive strategy needs an attacker.endpoint in the config")
-        client = build_client(cfg.attacker.endpoint, cfg.canary, role="attacker")
+        client = build_client(cfg.attacker.endpoint, canary, role="attacker")
         return AdaptiveAttacker(client, max_history=cfg.attacker.max_history_turns)
     return CorpusAttacker(load_corpus(cfg.categories, cfg.corpus_dir))
 
@@ -164,12 +164,16 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     if args.objective:
         cfg.attacker.objectives = args.objective
 
-    rules = cfg.system_prompt()
-    target = build_client(cfg.target, cfg.canary)
-    judge_client = build_client(cfg.judge, cfg.canary, role="judge") if cfg.judge else None
-    attacker = _build_attacker(cfg)
+    rules, canary = cfg.resolve_target()
+    target = build_client(cfg.target, canary)
+    judge_client = build_client(cfg.judge, canary, role="judge") if cfg.judge else None
+    attacker = _build_attacker(cfg, canary)
     objectives = _resolve_objectives(cfg.attacker.objectives)
     guardrail = Guardrail() if cfg.guardrail else None
+
+    if "out_of_scope" in cfg.attacker.objectives and cfg.attacker.judge_mode != "per_turn":
+        print("warning: the out_of_scope objective has no deterministic signal; set "
+              "judge_mode: per_turn in the config or successes may be missed", file=sys.stderr)
 
     print(paint(BANNER, "primary", color))
     print(f"{cfg.attacker.strategy} attacker, {len(objectives)} objective(s), "
@@ -192,7 +196,7 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
 
     sessions = run_campaign(
         attacker, target, objectives,
-        rules=rules, canary=cfg.canary, max_turns=cfg.attacker.max_turns,
+        rules=rules, canary=canary, max_turns=cfg.attacker.max_turns,
         guardrail=guardrail, judge_client=judge_client,
         judge_mode=cfg.attacker.judge_mode, scoring=cfg.scoring,
         max_history_turns=cfg.attacker.max_history_turns,

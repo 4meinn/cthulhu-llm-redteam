@@ -105,7 +105,7 @@ def run_session(
     should_stop: Callable[[], bool] | None = None,
 ) -> Session:
     """Run one objective to success, concession, cancellation, or the turn budget."""
-    attacker.reset(objective)
+    attacker.reset(objective, max_turns=max_turns)
     system = guardrail.harden(rules) if guardrail else rules
     history: list[Turn] = []
     verdicts: list[CombinedVerdict | None] = []

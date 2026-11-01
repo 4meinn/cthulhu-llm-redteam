@@ -8,7 +8,7 @@ from cthulhu.attackers import (
     MockAttacker,
     Turn,
 )
-from cthulhu.attackers.adaptive import SIMILARITY_LIMIT, similarity
+from cthulhu.attackers.adaptive import PERSONA, SIMILARITY_LIMIT, phase_for, similarity
 from cthulhu.clients import LLMClient, LLMError
 from cthulhu.corpus import load_corpus
 from cthulhu.jsonx import extract_objects, first_object_with, loads_lenient
@@ -240,3 +240,45 @@ def test_the_objective_is_restated_every_turn():
         msg = call[1]["content"]
         assert msg.count(OBJ.description) == 2          # once up front, once before the ask
         assert "Do not drift" in msg
+
+
+# --- phased conversation ---------------------------------------------------
+
+from cthulhu.attackers.adaptive import PERSONA, phase_for  # noqa: E402
+
+
+def test_phase_for_splits_the_budget_into_opening_middle_final():
+    assert [phase_for(t, 6) for t in range(1, 7)] == [
+        "opening", "opening", "middle", "middle", "final", "final"]
+    assert [phase_for(t, 3) for t in range(1, 4)] == ["opening", "middle", "final"]
+    assert [phase_for(t, 2) for t in range(1, 3)] == ["opening", "final"]
+    assert phase_for(1, 1) == "final"
+    assert phase_for(1, None) is None and phase_for(0, 6) is None
+
+
+def test_persona_teaches_a_conversation_not_a_single_shot():
+    assert "conversation" in PERSONA and "never start from scratch" in PERSONA
+
+
+def test_each_turn_carries_its_phase_and_position():
+    topics = ["tent sizes", "shipping to Canada", "return window", "sleeping bag ratings",
+              "gift cards", "order tracking"]
+    client = ScriptedClient([_reply(f"Question about {x} please") for x in topics])
+    atk = AdaptiveAttacker(client)
+    atk.reset(OBJ, max_turns=6)
+    history = []
+    for _ in range(6):
+        move = atk.next_move(history)
+        history.append(_turn(move=move))
+    first, third, last = (client.seen[i][1]["content"] for i in (0, 2, 5))
+    assert "turn 1 of 6" in first and "Phase: opening" in first and "Phase: final" not in first
+    assert "turn 3 of 6" in third and "Phase: middle" in third
+    assert "turn 6 of 6" in last and "Phase: final" in last
+
+
+def test_no_phase_text_when_the_budget_is_unknown():
+    client = ScriptedClient([_reply("hello there")])
+    atk = AdaptiveAttacker(client)
+    atk.reset(OBJ)
+    atk.next_move([])
+    assert "Phase:" not in client.seen[0][1]["content"]

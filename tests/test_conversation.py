@@ -155,3 +155,15 @@ def test_session_end_event_carries_the_reason():
              on_event=lambda kind, data: events.append((kind, data)))
     end = [d for k, d in events if k == "session_end"][0]
     assert end["ended_reason"] == "success"
+
+
+def test_the_engine_tells_the_attacker_its_turn_budget():
+    seen = {}
+
+    class Recorder(MockAttacker):
+        def reset(self, objective, max_turns=None):
+            seen["max_turns"] = max_turns
+            super().reset(objective, max_turns)
+
+    _session(Recorder(), MockClient(CANARY), max_turns=5)
+    assert seen["max_turns"] == 5

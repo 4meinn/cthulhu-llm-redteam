@@ -57,6 +57,7 @@ class RunConfig(BaseModel):
     guardrail: bool = False
     iterations: int = Field(default=1, ge=1)
     attacker: AttackerConfig | None = None
+    label: str | None = None                 # a display name for the run, used by the web board
     output_dir: Path = Path("out")
 
     @model_validator(mode="after")

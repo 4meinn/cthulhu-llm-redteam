@@ -58,6 +58,24 @@ def root():
     return FileResponse(_STATIC / "index.html")
 
 
+def _entry(run) -> dict:
+    out = {"id": run.id, "label": run.label, "status": run.status, "error": run.error,
+           "meta": run.meta, "plan": run.plan}
+    if run.report is not None:
+        out["summary"] = _summary(run.report)
+    return out
+
+
+@app.get("/runs")
+def list_runs():
+    return {"runs": [_entry(run) for run in manager.list()]}
+
+
+@app.post("/runs/cancel-all")
+def cancel_all_runs():
+    return {"cancelled": manager.cancel_all()}
+
+
 @app.post("/runs")
 def start_run(cfg: RunConfig):
     try:
@@ -69,11 +87,7 @@ def start_run(cfg: RunConfig):
 
 @app.get("/runs/{run_id}")
 def get_run(run_id: str):
-    run = _require(run_id)
-    out = {"id": run.id, "status": run.status, "error": run.error, "meta": run.meta}
-    if run.report is not None:
-        out["summary"] = _summary(run.report)
-    return out
+    return _entry(_require(run_id))
 
 
 @app.post("/runs/{run_id}/cancel")

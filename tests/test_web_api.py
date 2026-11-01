@@ -68,3 +68,39 @@ def test_serves_the_ui():
     assert root.status_code == 200 and "<title>Cthulhu</title>" in root.text
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/static/styles.css").status_code == 200
+
+
+def _start(**over):
+    return client.post("/runs", json=_body(**over)).json()["run_id"]
+
+
+def test_runs_are_listed_with_labels_and_a_plan():
+    rid = _start(label="Mira")
+    _drain_events(rid)
+    entry = [r for r in client.get("/runs").json()["runs"] if r["id"] == rid][0]
+    assert entry["label"] == "Mira" and entry["status"] == "done"
+    assert entry["plan"] == {"objectives": 1, "phases": 2, "max_turns": 6}   # guardrail on means two phases
+    assert entry["summary"]["baseline"]["met"] == 1
+
+
+def test_an_unlabelled_run_gets_a_default_name():
+    rid = _start()
+    _drain_events(rid)
+    label = client.get(f"/runs/{rid}").json()["label"]
+    assert label.startswith("qwen3:8b #")
+
+
+def test_the_list_keeps_start_order():
+    first, second = _start(label="one"), _start(label="two")
+    ids = [r["id"] for r in client.get("/runs").json()["runs"]]
+    assert ids.index(first) < ids.index(second)
+    _drain_events(first)
+    _drain_events(second)
+
+
+def test_cancel_all_leaves_finished_runs_alone():
+    finished = _start()
+    _drain_events(finished)
+    reply = client.post("/runs/cancel-all").json()
+    assert isinstance(reply["cancelled"], int)
+    assert client.get(f"/runs/{finished}").json()["status"] == "done"

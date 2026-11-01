@@ -137,7 +137,7 @@ def run_session(
             turn = Turn(move=move, sent="", response="", blocked=True, note=note)
             history.append(turn)
             verdicts.append(None)
-            emit("turn", turn=i, tactic=move.tactic, blocked=True, note=note)
+            emit("turn", turn=i, tactic=move.tactic, blocked=True, note=note, sent=move.prompt)
             continue
 
         sent = decision.prompt if decision is not None else move.prompt
@@ -164,7 +164,7 @@ def run_session(
         verdicts.append(verdict)
         convo.append({"role": "user", "content": sent})
         convo.append({"role": "assistant", "content": response})
-        emit("turn", turn=i, tactic=move.tactic, blocked=False, response=response,
+        emit("turn", turn=i, tactic=move.tactic, blocked=False, sent=sent, response=response,
              leaked=det.violated, violated=verdict.violated, judged=jv is not None,
              reason=(jv.reason if jv else ""))
 

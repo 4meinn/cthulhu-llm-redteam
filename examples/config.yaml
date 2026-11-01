@@ -29,3 +29,4 @@ attacker:
   max_history_turns: 8      # sliding window of recent turns sent to the target
   max_message_chars: 2000   # per-message clip
   seed_from_corpus: true      # hold one corpus attack back as the final-phase strike
+  strike_mode: adapt          # adapt | append (append adds the seed to the final message itself)

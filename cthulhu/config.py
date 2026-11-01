@@ -40,6 +40,7 @@ class AttackerConfig(BaseModel):
     max_history_turns: int = Field(default=8, ge=1)     # sliding window sent to the target
     max_message_chars: int = Field(default=2000, ge=1)  # per-message clip
     seed_from_corpus: bool = True                        # hold one corpus attack back as the final strike
+    strike_mode: Literal["adapt", "append"] = "adapt"    # model rewrites the seed, or the engine appends it
 
 
 class RunConfig(BaseModel):

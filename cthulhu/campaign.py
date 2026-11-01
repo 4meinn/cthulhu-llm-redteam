@@ -27,7 +27,8 @@ def build_attacker(cfg: RunConfig, canary: str) -> Attacker:
             raise ValueError("adaptive strategy needs an attacker.endpoint in the config")
         client = build_client(cfg.attacker.endpoint, canary, role="attacker")
         seeds = seed_picker(load_corpus([], cfg.corpus_dir)) if cfg.attacker.seed_from_corpus else None
-        return AdaptiveAttacker(client, max_history=cfg.attacker.max_history_turns, seeds=seeds)
+        return AdaptiveAttacker(client, max_history=cfg.attacker.max_history_turns, seeds=seeds,
+                                strike_mode=cfg.attacker.strike_mode)
     return CorpusAttacker(load_corpus(cfg.categories, cfg.corpus_dir))
 
 

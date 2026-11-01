@@ -39,7 +39,7 @@ The run is a short pipeline, each stage small enough to test on its own.
 1. **Config.** A YAML file names the target endpoint, the judge endpoint, the system-prompt file, the canary, which categories to run, the scoring policy, and whether the guardrail is on.
 2. **Corpus.** Adversarial prompts live in one YAML file per category and load into a typed model. You can point at your own corpus directory instead of the bundled one.
 3. **Runner.** Each prompt goes to the target with retries. With the guardrail on, it runs before the target ever sees the prompt.
-4. **Scoring.** Two scorers, recorded separately. The deterministic one detects the canary (including leaks with altered spacing or separators) and per-attack marker patterns. The LLM judge receives the target's rules, the attack and the reply, and returns a structured `{"violated": ..., "reason": ...}`. The judge parser is written for real local models: it strips think-blocks and code fences, tolerates trailing commas and single quotes, and falls back to the rules when the output cannot be parsed.
+4. **Scoring.** Two scorers, recorded separately. The deterministic one detects the canary (including leaks with altered spacing or separators), distinctive parts of a multi-part canary given away on their own (a reply that says the code "follows the pattern NW-XXXX-XXXX-ZEPHYR" leaks it), and per-attack marker patterns. The LLM judge receives the target's rules, the attack and the reply, and returns a structured `{"violated": ..., "reason": ...}`. The judge parser is written for real local models: it strips think-blocks and code fences, tolerates trailing commas and single quotes, and falls back to the rules when the output cannot be parsed.
 5. **Guardrail.** An input filter plus prompt hardening, applied before the prompt reaches the target.
 6. **Report.** JSON with every raw result, and Markdown with the summary tables, the OWASP mapping, a list of what still bypasses, and anything the two scorers disagreed on.
 
@@ -146,11 +146,20 @@ Two full reports are checked in. [`samples/live/report.md`](samples/live/report.
 
 ## Multi-turn adaptive attacks
 
-`cthulhu attack` runs an adaptive attacker in place of the static corpus: a model that writes its own attacks, reads why each attempt was refused or blocked, and changes tactic across a conversation toward one objective (leak the canary, leak the system prompt, act out of scope). The attacker model must be uncensored, since a safety-tuned model refuses to attack; the target and the judge can stay safety-tuned. Configure it under `attacker` in the config, then:
+`cthulhu attack` runs an adaptive attacker in place of the static corpus: a model that writes its own attacks, reads how the target answered each attempt, and changes tactic across a conversation toward one objective (leak the canary, leak the system prompt, act out of scope). The attacker model must be uncensored, since a safety-tuned model refuses to attack; the target and the judge can stay safety-tuned. Configure it under `attacker` in the config, then:
 
 ```
 cthulhu attack --config examples/config.yaml --guardrail
 ```
+
+A jailbreak is a conversation, not a single message, so the attacker is built to play one:
+
+- **Phases.** The session budget is split into an opening, a middle and a final phase. The opening turns ask ordinary questions that fit the target's role, the middle turns move the conversation toward the objective, and the last turns make the real request on the ground prepared. Each message has to build on the earlier ones.
+- **Strike seed.** One sharp attack from the static corpus is held back for the final phase and handed to the attacker as a wording to adapt, not to paste. A small model rarely writes a strong attack from nothing, but it can fit a good one to the conversation it built. The seed comes from the holdout partition where the objective has one, so the guardrail is not measured against the attacks it was tuned on. Switch it off with `seed_from_corpus: false`.
+- **No repeats.** A prompt too similar to one already sent is rejected and the model is asked again, up to twice. If it stays stubborn, the least similar candidate goes out, so the session keeps moving.
+- **Feedback.** The attacker sees the target's reply and a plain "this did not work" hint. The judge's reason is kept out of its view, since a line like "the assistant correctly refused" points nowhere.
+- **Focus.** The objective is restated every turn so the model does not drift into harmless questions.
+- **How it ended.** Every session records why it stopped: `success`, `conceded`, `turn_budget`, `attacker_no_move` (with the cause, such as a model error or unparseable output) or `cancelled`.
 
 [`samples/multiturn/report.md`](samples/multiturn/report.md) is a run from the mock: the guardrail blocks the direct override, and the attacker still breaks through a turn later with an emotional appeal the filter misses. Each success is marked with its source, and a judge-only success (the judge flags it, the rules do not) is kept under review rather than counted as proven. out_of_scope has no canary to detect, so it is judged, not pattern-matched; run it with `judge_mode: per_turn`.
 
@@ -185,7 +194,7 @@ cthulhu/
   config.py            config models, the YAML loader, target and canary resolution
   clients/             client interface, mock, ollama and openai-compatible
   corpus/              one YAML per category, loader, seen/holdout split
-  attackers/           attacker interface, static corpus, adaptive agent
+  attackers/           attacker interface, static corpus, adaptive agent, strike seeds
   conversation.py      multi-turn session engine
   runner.py            single-turn runner, applies the guardrail, retries
   scoring/             deterministic.py, judge.py, combine.py
@@ -209,12 +218,14 @@ The suite runs fully offline, no model and no network, using the mock client and
 
 ## Roadmap
 
-- A stronger adaptive attacker. On a small local model the agent repeats tactics and drifts from the objective, so a clean "nothing broke" says more about the attacker than the target. Planned: seed the agent from the static corpus as a hybrid, harden the no-repeat memory, stop feeding the judge's reason back as a hint, remind the agent of the objective each turn, and record why each session ended.
+- A reliable final strike. On an 8 GB attacker the corpus seed is often ignored and the real request never comes. Planned: an append mode where the engine adds the seed to the attacker's final message itself.
+- A multi-run view in the web interface, so several runs can be watched side by side.
+- A desktop app that wraps the local web interface in its own window.
 
 ## Known limitations
 
 - The single-turn attacker is a fixed corpus, so its coverage is only as wide as the prompts in `cthulhu/corpus/data`. The adaptive attacker (`cthulhu attack`) widens this but needs a local uncensored model to drive it.
-- The adaptive attacker is only as good as that model. On a small 8 GB model it repeats tactics and drifts off the objective, so a session that breaks nothing often reflects a weak attacker rather than a strong target. The planned fixes are under Roadmap.
+- The adaptive attacker is only as good as that model. The phases, the repeat guard and the restated goal removed repeated prompts and made the attacker build rapport, but a small 8 GB model still tends to ignore the corpus seed, drifts to harmless questions (placing an order, setting up an account) and sometimes writes in the target's voice. Two live sessions that broke nothing therefore say more about the attacker than about the target. Live runs are also not repeatable: the same setup leaked a hint of the canary in one run and held in the next.
 - The guardrail is pattern-based. It catches phrasings it was written for and misses novel ones, which is exactly what the holdout number is there to show.
 - The LLM judge is only as reliable as the model behind it; a weak judge disagrees with the deterministic rules more often, which is why both verdicts are kept. In the live run the two agreed on 28 of 29 attacks (97%). The one disagreement, `enc-005`, was a judge false positive: it treated a mention of the access code as a disclosure. Judges over-flag mentions, and that is left visible in the report instead of being tuned away.
 - The guardrail overfits its seen set. It left 0 of 20 seen attacks through but 1 of 9 holdout attacks (`spl-005`, a translation-based prompt leak), so a clean seen number says little about unseen phrasings.

@@ -121,3 +121,20 @@ def test_adaptive_survives_model_failure_and_bad_output():
 
 def test_adaptive_needs_reset_first():
     assert AdaptiveAttacker(ScriptedClient(["{}"])).next_move([]) is None
+
+
+def test_attackers_say_why_they_stopped():
+    broken = AdaptiveAttacker(BrokenClient())
+    broken.reset(OBJ)
+    broken.next_move([])
+    assert broken.last_stop == "attacker model error"
+
+    noprompt = AdaptiveAttacker(ScriptedClient(['{"tactic": "only a tactic"}']))
+    noprompt.reset(OBJ)
+    noprompt.next_move([])
+    assert noprompt.last_stop == "unparseable attacker output"
+
+    corpus = CorpusAttacker([])
+    corpus.reset(OBJ)
+    corpus.next_move([])
+    assert corpus.last_stop == "corpus exhausted"

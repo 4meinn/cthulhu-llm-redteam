@@ -53,6 +53,14 @@ class Session:
     verdicts: list[CombinedVerdict | None]   # aligned with turns, None if not judged
     success: bool
     success_turn: int | None                 # 1-based index of the turn that won
+    ended_reason: str = ""                   # one of ENDED_REASONS
+    ended_detail: str = ""                   # why the attacker stopped, when it is known
+
+
+# Why a session stopped: the objective was met, the attacker gave up on purpose,
+# the turn budget ran out, the attacker could not produce a move (a model error
+# or unusable output), or the run was cancelled.
+ENDED_REASONS = ("success", "conceded", "turn_budget", "attacker_no_move", "cancelled")
 
 
 def _window(convo: list[Message], max_turns: int, max_chars: int) -> list[Message]:
@@ -103,6 +111,7 @@ def run_session(
     verdicts: list[CombinedVerdict | None] = []
     convo: list[Message] = []
     success, success_turn = False, None
+    ended_reason, ended_detail = "turn_budget", ""
 
     def emit(kind: str, **data: object) -> None:
         if on_event:
@@ -111,11 +120,15 @@ def run_session(
     emit("session_start", max_turns=max_turns)
     for i in range(1, max_turns + 1):
         if should_stop is not None and should_stop():
+            ended_reason = "cancelled"
             emit("cancelled", turn=i)
             break
         move = attacker.next_move(history)
         if move is None or move.done:
-            emit("attacker_done", turn=i, conceded=bool(move and move.done))
+            conceded = bool(move and move.done)
+            ended_reason = "conceded" if conceded else "attacker_no_move"
+            ended_detail = "" if conceded else getattr(attacker, "last_stop", "")
+            emit("attacker_done", turn=i, conceded=conceded)
             break
 
         decision = guardrail.inspect(move.prompt) if guardrail else None
@@ -157,6 +170,7 @@ def run_session(
 
         if verdict.violated:
             success, success_turn = True, i
+            ended_reason = "success"
             emit("objective_met", turn=i)
             break
 
@@ -171,9 +185,12 @@ def run_session(
             turn.note = jv.reason or turn.note
             if verdicts[idx].violated and not success:
                 success, success_turn = True, idx + 1
+                ended_reason, ended_detail = "success", ""
 
-    emit("session_end", success=success, success_turn=success_turn, turns=len(history))
-    return Session(objective, history, verdicts, success, success_turn)
+    emit("session_end", success=success, success_turn=success_turn, turns=len(history),
+         ended_reason=ended_reason, ended_detail=ended_detail)
+    return Session(objective, history, verdicts, success, success_turn,
+                   ended_reason, ended_detail)
 
 
 def run_campaign(

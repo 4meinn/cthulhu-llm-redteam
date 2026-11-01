@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+web = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.scripts]
 cthulhu = "cthulhu.cli:main"
@@ -26,7 +27,7 @@ redteam = "cthulhu.cli:main"
 include = ["cthulhu*"]
 
 [tool.setuptools.package-data]
-cthulhu = ["corpus/data/*.yaml"]
+cthulhu = ["corpus/data/*.yaml", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -17,7 +17,7 @@ class CorpusAttacker(Attacker):
         self._attacks = attacks
         self._i = 0
 
-    def reset(self, objective: Objective) -> None:
+    def reset(self, objective: Objective, max_turns: int | None = None) -> None:
         self._i = 0
         self.last_stop = ""
 

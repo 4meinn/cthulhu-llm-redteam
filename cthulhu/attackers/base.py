@@ -84,8 +84,12 @@ class Attacker(ABC):
 
     last_stop: str = ""
 
-    def reset(self, objective: Objective) -> None:
-        """Begin a fresh session for one objective. Override to clear state."""
+    def reset(self, objective: Objective, max_turns: int | None = None) -> None:
+        """Begin a fresh session for one objective. Override to clear state.
+
+        max_turns is the session budget, so an attacker can plan how a conversation
+        unfolds. Attackers that do not plan ignore it.
+        """
 
     @abstractmethod
     def next_move(self, history: list[Turn]) -> AttackMove | None:

@@ -25,7 +25,7 @@ class MockAttacker(Attacker):
         self._script = script if script is not None else DEFAULT_SCRIPT
         self._i = 0
 
-    def reset(self, objective: Objective) -> None:
+    def reset(self, objective: Objective, max_turns: int | None = None) -> None:
         self._i = 0
         self.last_stop = ""
 

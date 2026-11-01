@@ -39,6 +39,7 @@ class AttackerConfig(BaseModel):
     judge_mode: Literal["per_turn", "on_suspicion", "final"] = "on_suspicion"
     max_history_turns: int = Field(default=8, ge=1)     # sliding window sent to the target
     max_message_chars: int = Field(default=2000, ge=1)  # per-message clip
+    seed_from_corpus: bool = True                        # hold one corpus attack back as the final strike
 
 
 class RunConfig(BaseModel):

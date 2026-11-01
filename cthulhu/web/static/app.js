@@ -1,8 +1,10 @@
 "use strict";
 
 // Every piece of text that comes from the API (model replies, judge reasons,
-// tactics, notes) is written with textContent, never innerHTML. A jailbroken
-// target can return markup, and the tool must never run it.
+// tactics, notes, run names) is written with textContent, never innerHTML. A
+// jailbroken target can return markup, and the tool must never run it.
+
+const Layout = window.CthulhuLayout;
 
 function el(tag, opts) {
   opts = opts || {};
@@ -14,9 +16,19 @@ function el(tag, opts) {
 
 function qs(sel) { return document.querySelector(sel); }
 
+function safeStorage() {
+  try { return window.localStorage; } catch (e) { return null; }
+}
+
 const views = { setup: qs("#setup"), live: qs("#live"), report: qs("#report") };
-let currentRun = null;
-let liveSource = null;
+
+// The live board: every run keeps its own stream, its own transcript and its own
+// list entry. The layout is only a class on the board, so switching between the
+// list view and the columns never touches a stream.
+const runs = new Map();     // run id -> run
+const order = [];           // run ids, oldest first
+let selectedRun = null;
+let layoutPref = "C";
 
 function showView(name) {
   for (const key in views) views[key].classList.toggle("hidden", key !== name);
@@ -32,11 +44,13 @@ function buildConfig(form) {
   const objectives = Array.prototype.map.call(
     form.querySelectorAll('input[name="objective"]:checked'), function (i) { return i.value; });
   const canary = val("canary").trim();
+  const label = val("label").trim();
   return {
     target: { provider: val("target_provider"), base_url: val("target_base_url"), model: val("target_model") },
     judge: { provider: val("judge_provider"), base_url: val("judge_base_url"), model: val("judge_model") },
     system_prompt_text: val("system_prompt"),
     canary: canary || null,
+    label: label || null,
     guardrail: form.elements.guardrail.checked,
     scoring: "any",
     attacker: {
@@ -85,10 +99,19 @@ async function submitRun(ev) {
     return;
   }
   const data = await resp.json();
-  startLive(data.run_id);
+  await addRun(data.run_id);
+  showView("live");
 }
 
-// --- live ------------------------------------------------------------------
+// --- the board -------------------------------------------------------------
+
+function isTerminal(status) {
+  return status === "done" || status === "cancelled" || status === "error";
+}
+
+function dotClass(status) {
+  return status === "running" ? "run" : status;
+}
 
 function outcome(ev) {
   if (ev.blocked) return { text: "blocked by guardrail", cls: "safe" };
@@ -97,51 +120,221 @@ function outcome(ev) {
   return { text: "held", cls: "muted" };
 }
 
-function startLive(runId) {
-  currentRun = runId;
-  showView("live");
-  qs("#live-log").replaceChildren();
-  qs("#live-status").textContent = "running";
-  qs("#to-report-btn").classList.add("hidden");
-  if (liveSource) liveSource.close();
-  liveSource = new EventSource("/runs/" + encodeURIComponent(runId) + "/events");
-  liveSource.onmessage = function (e) { handleEvent(JSON.parse(e.data)); };
-  liveSource.onerror = function () { /* the stream closes itself on run_finished */ };
+function message(who, text, cls) {
+  const row = el("div", { cls: "msg" + (cls ? " " + cls : "") });
+  row.append(el("span", { cls: "who", text: who + ": " }));
+  row.append(document.createTextNode(text));
+  return row;
 }
 
-function handleEvent(ev) {
-  const log = qs("#live-log");
+// One exchange, used by the live feed and by the report transcripts.
+function turnRow(label, t, reason) {
+  const o = outcome(t);
+  const row = el("div", { cls: "turn" });
+  const head = el("div", { cls: "turn-head" });
+  head.append(el("span", { cls: "tnum", text: label }));
+  head.append(el("span", { cls: "tactic", text: t.tactic || "" }));
+  head.append(el("span", { cls: "tag " + o.cls, text: o.text }));
+  row.append(head);
+  if (t.sent) row.append(message("atk", t.sent, ""));
+  if (!t.blocked && t.response) row.append(message("bot", t.response, "reply"));
+  if (reason) row.append(el("div", { cls: "reason", text: reason }));
+  return row;
+}
+
+function describeMeta(meta) {
+  const bits = [];
+  if (meta.target) bits.push(meta.target);
+  if (meta.judge) bits.push("judge " + meta.judge);
+  bits.push(meta.guardrail ? "guardrail on" : "guardrail off");
+  return bits.join("  |  ");
+}
+
+function buildParts(run) {
+  const parts = {};
+
+  // the run's own panel: header, actions and the transcript
+  parts.panel = el("div", { cls: "panel" });
+  const head = el("div", { cls: "run-head" });
+  parts.dot = el("span", { cls: "dot run" });
+  head.append(parts.dot);
+  head.append(el("span", { cls: "run-title", text: run.label }));
+  parts.status = el("span", { cls: "status run", text: "running" });
+  head.append(parts.status);
+  parts.panel.append(head);
+  parts.panel.append(el("div", { cls: "run-sub", text: describeMeta(run.meta) }));
+
+  const actions = el("div", { cls: "run-actions" });
+  parts.cancel = el("button", { cls: "ghost small", text: "Cancel" });
+  parts.cancel.type = "button";
+  parts.cancel.addEventListener("click", function () {
+    fetch("/runs/" + encodeURIComponent(run.id) + "/cancel", { method: "POST" });
+  });
+  parts.report = el("button", { cls: "small hidden", text: "View report" });
+  parts.report.type = "button";
+  parts.report.addEventListener("click", function () { showReport(run); });
+  actions.append(parts.cancel, parts.report);
+  parts.panel.append(actions);
+
+  parts.feed = el("div", { cls: "feed" });
+  parts.panel.append(parts.feed);
+
+  // the run's entry in the list, with a progress bar
+  parts.item = el("div", { cls: "list-item" });
+  const itemHead = el("div", { cls: "run-head" });
+  parts.itemDot = el("span", { cls: "dot run" });
+  itemHead.append(parts.itemDot, el("span", { cls: "run-title", text: run.label }));
+  parts.item.append(itemHead);
+  parts.item.append(el("div", { cls: "run-sub", text: run.meta.target || "" }));
+  const track = el("div", { cls: "progress" });
+  parts.fill = el("i");
+  track.append(parts.fill);
+  parts.item.append(track);
+  parts.item.addEventListener("click", function () { selectRun(run.id); });
+
+  return parts;
+}
+
+function createRun(entry) {
+  if (runs.has(entry.id)) return runs.get(entry.id);
+  const run = {
+    id: entry.id,
+    label: entry.label || entry.id.slice(0, 6),
+    meta: entry.meta || {},
+    plan: entry.plan || {},
+    status: "running",
+    ended: 0,
+    turn: 0,
+    retries: 0,
+    source: null,
+  };
+  run.parts = buildParts(run);
+  qs("#run-panels").append(run.parts.panel);
+  qs("#run-list").append(run.parts.item);
+  runs.set(run.id, run);
+  order.push(run.id);
+  openStream(run);
+  updateRun(run);
+  return run;
+}
+
+async function addRun(runId) {
+  let entry = { id: runId };
+  try {
+    const resp = await fetch("/runs/" + encodeURIComponent(runId));
+    if (resp.ok) entry = await resp.json();
+  } catch (e) { /* the placeholder entry is enough to follow the stream */ }
+  createRun(entry);
+  selectRun(runId);
+}
+
+function resetFeed(run) {
+  run.parts.feed.replaceChildren();
+  run.ended = 0;
+  run.turn = 0;
+}
+
+// The stream replays every event from the start when it reconnects, so a dropped
+// connection rebuilds the feed instead of doubling it.
+function openStream(run) {
+  if (run.source) run.source.close();
+  run.source = new EventSource("/runs/" + encodeURIComponent(run.id) + "/events");
+  run.source.onmessage = function (e) { handleEvent(run, JSON.parse(e.data)); };
+  run.source.onerror = function () {
+    if (isTerminal(run.status)) return;
+    run.source.close();
+    if (run.retries >= 5) return;
+    run.retries += 1;
+    resetFeed(run);
+    setTimeout(function () { if (!isTerminal(run.status)) openStream(run); }, 1500);
+  };
+}
+
+function endedText(ev) {
+  const detail = ev.ended_detail ? " (" + ev.ended_detail + ")" : "";
+  return (ev.ended_reason || "finished") + detail + " after " + ev.turns + " turn(s)";
+}
+
+function handleEvent(run, ev) {
+  const feed = run.parts.feed;
   if (ev.kind === "session_start") {
-    log.append(el("div", { cls: "sess", text: ev.phase + " / " + ev.objective }));
+    run.turn = 0;
+    feed.append(el("div", { cls: "sess", text: ev.phase + " / " + ev.objective }));
   } else if (ev.kind === "turn") {
-    const o = outcome(ev);
-    const row = el("div", { cls: "turn" });
-    row.append(el("span", { cls: "tnum", text: ev.phase + " t" + ev.turn }));
-    row.append(el("span", { cls: "tactic", text: ev.tactic || "" }));
-    row.append(el("span", { cls: "tag " + o.cls, text: o.text }));
-    if (!ev.blocked && ev.response) row.append(el("div", { cls: "reply", text: ev.response }));
-    if (ev.reason) row.append(el("div", { cls: "reason", text: "judge: " + ev.reason }));
-    log.append(row);
+    run.turn = ev.turn;
+    feed.append(turnRow(ev.phase + " t" + ev.turn, ev, ev.reason ? "judge: " + ev.reason : ""));
+  } else if (ev.kind === "session_end") {
+    run.ended += 1;
+    run.turn = 0;
+    feed.append(el("div", { cls: "note", text: "ended: " + endedText(ev) }));
   } else if (ev.kind === "cancelled") {
-    log.append(el("div", { cls: "note", text: "cancelled" }));
+    feed.append(el("div", { cls: "note", text: "cancelled" }));
   } else if (ev.kind === "error") {
-    log.append(el("div", { cls: "error", text: ev.message || "error" }));
+    feed.append(el("div", { cls: "error", text: ev.message || "error" }));
   } else if (ev.kind === "run_finished") {
-    if (liveSource) liveSource.close();
-    qs("#live-status").textContent = ev.status;
-    qs("#to-report-btn").classList.remove("hidden");
-    loadReport(currentRun);
+    run.status = ev.status;
+    if (run.source) run.source.close();
   }
-  log.scrollTop = log.scrollHeight;
+  updateRun(run);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function updateRun(run) {
+  const p = run.parts;
+  const cls = dotClass(run.status);
+  p.dot.className = "dot " + cls;
+  p.itemDot.className = "dot " + cls;
+  p.status.className = "status " + cls;
+  p.status.textContent = run.status;
+  const frac = Layout.progress(run.plan, run.status, run.ended, run.turn);
+  p.fill.style.width = Math.round(frac * 100) + "%";
+  p.cancel.classList.toggle("hidden", isTerminal(run.status));
+  p.report.classList.toggle("hidden", !(run.status === "done" || run.status === "cancelled"));
+  renderBoard();
+}
+
+function renderBoard() {
+  const choice = Layout.chooseLayout(order.length, layoutPref);
+  const board = qs("#board");
+  board.className = "board layout-" + choice;
+  board.style.setProperty("--runs", String(Math.max(order.length, 1)));
+  qs("#layout-toggle").classList.toggle("hidden", choice === "single");
+  document.querySelectorAll("#layout-toggle button").forEach(function (b) {
+    b.setAttribute("aria-pressed", String(b.dataset.layout === layoutPref));
+  });
+  selectedRun = Layout.pickSelected(order, selectedRun);
+  let running = 0;
+  order.forEach(function (id) {
+    const run = runs.get(id);
+    if (run.status === "running") running += 1;
+    run.parts.panel.classList.toggle("selected", id === selectedRun);
+    run.parts.item.classList.toggle("active", id === selectedRun);
+  });
+  qs("#board-meta").textContent =
+    order.length + (order.length === 1 ? " run" : " runs") + ", " + running + " running";
+  qs("#stop-all-btn").disabled = running === 0;
+}
+
+function selectRun(id) {
+  selectedRun = id;
+  renderBoard();
+}
+
+function setLayout(value) {
+  layoutPref = Layout.normalizePreference(value);
+  Layout.savePreference(safeStorage(), layoutPref);
+  renderBoard();
 }
 
 // --- report ----------------------------------------------------------------
 
-async function loadReport(runId) {
-  const resp = await fetch("/runs/" + encodeURIComponent(runId) + "/report");
+async function showReport(run) {
+  const resp = await fetch("/runs/" + encodeURIComponent(run.id) + "/report");
   if (!resp.ok) return;
   renderReport(await resp.json());
-  qs("#md-link").href = "/runs/" + encodeURIComponent(runId) + "/report.md";
+  qs("#report-title").textContent = run.label;
+  qs("#md-link").href = "/runs/" + encodeURIComponent(run.id) + "/report.md";
+  showView("report");
 }
 
 function sessionsByObjective(sessions) {
@@ -229,32 +422,46 @@ function renderReport(report) {
   phases.forEach(function (p) {
     (p[1] || []).forEach(function (s) {
       body.append(el("h3", { text: s.objective.id + " (" + p[0] + ")" }));
-      s.turns.forEach(function (t, i) {
-        const o = outcome(t);
-        const turn = el("div", { cls: "turn" });
-        turn.append(el("span", { cls: "tnum", text: "t" + (i + 1) }));
-        turn.append(el("span", { cls: "tactic", text: t.tactic || "" }));
-        turn.append(el("span", { cls: "tag " + o.cls, text: o.text }));
-        turn.append(el("div", { cls: "sent", text: "sent: " + t.sent }));
-        if (!t.blocked) turn.append(el("div", { cls: "reply", text: "reply: " + t.response }));
-        if (t.note) turn.append(el("div", { cls: "reason", text: t.note }));
-        body.append(turn);
-      });
+      if (s.ended_reason) {
+        const detail = s.ended_detail ? " (" + s.ended_detail + ")" : "";
+        body.append(el("p", { cls: "muted", text: "ended: " + s.ended_reason + detail }));
+      }
+      s.turns.forEach(function (t, i) { body.append(turnRow("t" + (i + 1), t, t.note)); });
     });
   });
 }
 
 // --- wiring ----------------------------------------------------------------
 
+async function restoreBoard() {
+  let list;
+  try {
+    const resp = await fetch("/runs");
+    if (!resp.ok) return;
+    list = (await resp.json()).runs || [];
+  } catch (e) { return; }
+  list.forEach(createRun);
+  if (list.length > 0) showView("live");
+}
+
 document.addEventListener("DOMContentLoaded", function () {
+  layoutPref = Layout.loadPreference(safeStorage());
+
   const form = qs("#run-form");
   form.addEventListener("submit", submitRun);
   form.addEventListener("change", function () { updateOosWarning(form); });
   updateOosWarning(form);
 
-  qs("#cancel-btn").addEventListener("click", function () {
-    if (currentRun) fetch("/runs/" + encodeURIComponent(currentRun) + "/cancel", { method: "POST" });
+  qs("#new-run-btn").addEventListener("click", function () { showView("setup"); });
+  qs("#stop-all-btn").addEventListener("click", function () {
+    fetch("/runs/cancel-all", { method: "POST" });
   });
-  qs("#to-report-btn").addEventListener("click", function () { showView("report"); });
+  document.querySelectorAll("#layout-toggle button").forEach(function (b) {
+    b.addEventListener("click", function () { setLayout(b.dataset.layout); });
+  });
+  qs("#back-to-board").addEventListener("click", function () { showView("live"); });
   qs("#back-to-setup").addEventListener("click", function () { showView("setup"); });
+
+  renderBoard();
+  restoreBoard();
 });

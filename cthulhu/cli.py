@@ -114,6 +114,11 @@ def _score(
 
 def _attack_printer(color: bool):
     def on_event(phase: str, kind: str, data: dict) -> None:
+        if kind == "session_end":
+            detail = f" ({data['ended_detail']})" if data.get("ended_detail") else ""
+            print(f"  [{phase}] [{data['objective']}] ended: {data.get('ended_reason', '?')}{detail}"
+                  f" after {data.get('turns', '?')} turn(s)")
+            return
         if kind != "turn":
             return
         if data.get("blocked"):

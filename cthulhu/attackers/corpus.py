@@ -19,9 +19,11 @@ class CorpusAttacker(Attacker):
 
     def reset(self, objective: Objective) -> None:
         self._i = 0
+        self.last_stop = ""
 
     def next_move(self, history: list[Turn]) -> AttackMove | None:
         if self._i >= len(self._attacks):
+            self.last_stop = "corpus exhausted"
             return None
         attack = self._attacks[self._i]
         self._i += 1

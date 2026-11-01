@@ -58,18 +58,23 @@ class AdaptiveAttacker(Attacker):
     def reset(self, objective: Objective) -> None:
         self._objective = objective
         self._tried = []
+        self.last_stop = ""
 
     def next_move(self, history: list[Turn]) -> AttackMove | None:
         if self._objective is None:
+            self.last_stop = "no objective set"
             return None
         if self._max is not None and len(history) >= self._max:
+            self.last_stop = "attempt cap reached"
             return None
         try:
             raw = self._client.chat(self._build(history))
         except LLMError:
+            self.last_stop = "attacker model error"
             return None
         obj = first_object_with(raw, "prompt")
         if obj is None:
+            self.last_stop = "unparseable attacker output"
             return None
         if _as_bool(obj.get("give_up", False)):
             return AttackMove(prompt="", tactic=str(obj.get("tactic", "")), done=True)

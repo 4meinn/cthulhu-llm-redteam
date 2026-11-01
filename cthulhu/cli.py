@@ -7,10 +7,9 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .attackers import AdaptiveAttacker, CorpusAttacker, DEFAULT_OBJECTIVES, Objective
+from .campaign import run_attack_run
 from .clients import LLMClient, build_client
 from .config import load_config
-from .conversation import run_campaign
 from .corpus import available_categories, load_corpus
 from .guardrail import Guardrail
 from .report import build_report, build_session_report, write_report, write_session_report
@@ -45,6 +44,9 @@ def _parser() -> argparse.ArgumentParser:
         help="override the config's guardrail setting",
     )
     atk.add_argument("--out", type=Path, help="output directory")
+
+    sv = sub.add_parser("serve", help="run the local web backend on 127.0.0.1")
+    sv.add_argument("--port", type=int, default=8000)
     return p
 
 
@@ -110,21 +112,8 @@ def _score(
     return items
 
 
-def _build_attacker(cfg, canary: str):
-    if cfg.attacker.strategy == "adaptive":
-        if cfg.attacker.endpoint is None:
-            raise SystemExit("adaptive strategy needs an attacker.endpoint in the config")
-        client = build_client(cfg.attacker.endpoint, canary, role="attacker")
-        return AdaptiveAttacker(client, max_history=cfg.attacker.max_history_turns)
-    return CorpusAttacker(load_corpus(cfg.categories, cfg.corpus_dir))
-
-
-def _resolve_objectives(ids: list[str]) -> list[Objective]:
-    return [DEFAULT_OBJECTIVES.get(oid, Objective(oid, oid)) for oid in ids]
-
-
-def _turn_printer(color: bool, phase: str):
-    def on_event(kind: str, data: dict) -> None:
+def _attack_printer(color: bool):
+    def on_event(phase: str, kind: str, data: dict) -> None:
         if kind != "turn":
             return
         if data.get("blocked"):
@@ -153,33 +142,20 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     if args.objective:
         cfg.attacker.objectives = args.objective
 
-    rules, canary = cfg.resolve_target()
-    target = build_client(cfg.target, canary)
-    judge_client = build_client(cfg.judge, canary, role="judge") if cfg.judge else None
-    objectives = _resolve_objectives(cfg.attacker.objectives)
-
     if "out_of_scope" in cfg.attacker.objectives and cfg.attacker.judge_mode != "per_turn":
         print("warning: the out_of_scope objective has no deterministic signal; set "
               "judge_mode: per_turn in the config or successes may be missed", file=sys.stderr)
 
     print(paint(BANNER, "primary", color))
-    print(f"{cfg.attacker.strategy} attacker, {len(objectives)} objective(s), "
+    print(f"{cfg.attacker.strategy} attacker, {len(cfg.attacker.objectives)} objective(s), "
           f"up to {cfg.attacker.max_turns} turns, judge={cfg.attacker.judge_mode}, "
           f"guardrail {'on' if cfg.guardrail else 'off'}")
 
-    kw = dict(
-        rules=rules, canary=canary, max_turns=cfg.attacker.max_turns,
-        judge_client=judge_client, judge_mode=cfg.attacker.judge_mode, scoring=cfg.scoring,
-        max_history_turns=cfg.attacker.max_history_turns,
-        max_message_chars=cfg.attacker.max_message_chars,
-    )
-    # Baseline first, then a guarded pass, so the before/after is against the same attacker.
-    baseline = run_campaign(_build_attacker(cfg, canary), target, objectives,
-                            guardrail=None, on_event=_turn_printer(color, "baseline"), **kw)
-    guarded = None
-    if cfg.guardrail:
-        guarded = run_campaign(_build_attacker(cfg, canary), target, objectives,
-                               guardrail=Guardrail(), on_event=_turn_printer(color, "guarded"), **kw)
+    try:
+        baseline, guarded = run_attack_run(cfg, on_event=_attack_printer(color))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     meta = {
         "target": f"{cfg.target.provider}:{cfg.target.model}",
@@ -197,6 +173,20 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
         summary += f", guarded: {sum(s.success for s in guarded)}/{len(guarded)} met"
     print(paint(summary, "crimson" if met_b else "teal", color))
     print(f"wrote {json_path} and {md_path}")
+    return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    try:
+        import uvicorn
+
+        from .web.app import app
+    except ImportError:
+        print('the web backend needs the web extra: pip install -e ".[web]"', file=sys.stderr)
+        return 2
+    # Bind to loopback only. There is deliberately no flag to change the host: a
+    # red-team tool must not be opened to the network by accident.
+    uvicorn.run(app, host="127.0.0.1", port=args.port)
     return 0
 
 
@@ -219,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args, color)
     if args.command == "attack":
         return _cmd_attack(args, color)
+    if args.command == "serve":
+        return _cmd_serve(args)
     return _cmd_list(args)
 
 

@@ -94,8 +94,9 @@ def run_session(
     max_history_turns: int = 8,
     max_message_chars: int = 2000,
     on_event: Event | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> Session:
-    """Run one objective to success, concession, or the turn budget."""
+    """Run one objective to success, concession, cancellation, or the turn budget."""
     attacker.reset(objective)
     system = guardrail.harden(rules) if guardrail else rules
     history: list[Turn] = []
@@ -109,6 +110,9 @@ def run_session(
 
     emit("session_start", max_turns=max_turns)
     for i in range(1, max_turns + 1):
+        if should_stop is not None and should_stop():
+            emit("cancelled", turn=i)
+            break
         move = attacker.next_move(history)
         if move is None or move.done:
             emit("attacker_done", turn=i, conceded=bool(move and move.done))
@@ -179,4 +183,10 @@ def run_campaign(
     **kwargs: object,
 ) -> list[Session]:
     """Run one session per objective, reusing the attacker (reset each time)."""
-    return [run_session(attacker, target, obj, **kwargs) for obj in objectives]  # type: ignore[arg-type]
+    should_stop = kwargs.get("should_stop")
+    sessions: list[Session] = []
+    for obj in objectives:
+        if callable(should_stop) and should_stop():
+            break
+        sessions.append(run_session(attacker, target, obj, **kwargs))  # type: ignore[arg-type]
+    return sessions

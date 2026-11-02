@@ -19,7 +19,11 @@ BANNER = "cthulhu - it stirs, and your prompts answer"
 def color_enabled(no_color: bool = False) -> bool:
     if no_color or os.environ.get("NO_COLOR"):
         return False
-    return sys.stdout.isatty()
+    # A windowed (no console) build has no stdout at all.
+    stream = sys.stdout
+    if stream is None or not hasattr(stream, "isatty"):
+        return False
+    return stream.isatty()
 
 
 def paint(text: str, name: str, enabled: bool) -> str:

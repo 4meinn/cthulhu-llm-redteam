@@ -12,4 +12,5 @@ python -m PyInstaller `
     --add-data "cthulhu\corpus\data;cthulhu\corpus\data" `
     tools\desktop_entry.py
 
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
 Write-Host "built dist\cthulhu.exe"

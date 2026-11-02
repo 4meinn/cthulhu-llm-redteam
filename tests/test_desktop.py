@@ -54,3 +54,13 @@ def test_run_desktop_without_webview_explains(monkeypatch):
     monkeypatch.setitem(sys.modules, "webview", None)
     with pytest.raises(desktop.DesktopError, match="desktop extra"):
         desktop.run_desktop()
+
+
+def test_color_disabled_without_a_console(monkeypatch):
+    from cthulhu.ui import color_enabled
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(sys, "stdout", None)
+    assert color_enabled() is False
+    monkeypatch.setattr(sys, "stdout", object())
+    assert color_enabled() is False

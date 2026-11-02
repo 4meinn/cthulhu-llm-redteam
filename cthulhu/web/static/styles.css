@@ -39,14 +39,26 @@ h1 {
 #steps span.active { color: var(--primary-bright); font-weight: 600; }
 
 main { max-width: 1240px; margin: 0 auto; padding: 0 24px 56px; }
-#setup, #report { max-width: 920px; margin-left: auto; margin-right: auto; }
+#setup { max-width: 1240px; margin-left: auto; margin-right: auto; }
+#report { max-width: 920px; margin-left: auto; margin-right: auto; }
 .hidden { display: none !important; }
 
 fieldset {
   border: 1px solid var(--border); border-radius: 10px;
   margin: 0 0 16px; padding: 10px 16px 14px;
   background: var(--surface);
+  min-width: 0;
 }
+
+/* Setup: two equal columns. minmax(0, 1fr) and min-width: 0 stop a long unbroken
+   token (a canary, a URL) from widening a column and forcing a horizontal scroll. */
+.setup-grid {
+  display: grid; gap: 0 16px; align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.setup-grid > * { min-width: 0; }
+#run-form { overflow-wrap: anywhere; }
+#run-form textarea { resize: vertical; }
 legend { font-weight: 600; font-size: 12px; padding: 0 6px; color: var(--primary); text-transform: uppercase; letter-spacing: 1px; }
 label { display: block; margin: 8px 0; font-size: 13px; color: var(--muted); }
 label.inline, .objectives label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
@@ -180,6 +192,10 @@ h3 { font-size: 14px; margin: 16px 0 4px; color: var(--primary-bright); }
 .msg.reply { color: var(--text); }
 .msg .who { color: #8a6d79; }
 .turn .reason, .turn .note, .feed .note { margin-left: 0; }
+
+@media (max-width: 700px) {
+  .setup-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 @media (max-width: 760px) {
   .layout-C { grid-template-columns: minmax(0, 1fr); }

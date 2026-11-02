@@ -48,3 +48,12 @@ def test_report_records_why_each_session_ended():
     s = report["baseline"][0]
     assert s["ended_reason"] == "success" and s["ended_detail"] == ""
     assert "Ended: success" in session_report_to_markdown(report)
+
+
+def test_blocked_turn_keeps_the_attempted_message():
+    report = build_session_report(_campaign(LEAK), _campaign(LEAK, guardrail=Guardrail()),
+                                  {"target": "mock"})
+    blocked = [t for t in report["guarded"][0]["turns"] if t["blocked"]]
+    assert blocked and all(t["sent"] for t in blocked)
+    md = session_report_to_markdown(report)
+    assert "blocked by guardrail" in md and "   - sent: " in md

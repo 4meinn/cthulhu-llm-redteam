@@ -250,7 +250,8 @@ def _session_dict(session: Session) -> dict:
         "turns": [
             {
                 "tactic": t.move.tactic,
-                "sent": t.sent,
+                # A blocked turn is never sent, so keep the attempted message for the report.
+                "sent": t.move.prompt if t.blocked else t.sent,
                 "response": t.response,
                 "blocked": t.blocked,
                 "leaked": t.leaked,

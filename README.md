@@ -20,7 +20,7 @@ Prompt injection and jailbreak testing for LLM applications you own. Cthulhu run
 - **Attack categories**: direct injection, jailbreak, system-prompt leak, indirect injection, encoding evasion
 - **Scoring**: deterministic rules plus an LLM judge, recorded separately
 - **License**: MIT
-- **Status**: v0.3.0, MVP, multi-turn adaptive engine and a local web interface, the MVP validated against a live local model
+- **Status**: v0.4.0, MVP, multi-turn adaptive engine, a local web interface with a multi-run board, a desktop app, the MVP validated against a live local model
 
 ## Authorized use
 
@@ -39,7 +39,7 @@ The run is a short pipeline, each stage small enough to test on its own.
 1. **Config.** A YAML file names the target endpoint, the judge endpoint, the system-prompt file, the canary, which categories to run, the scoring policy, and whether the guardrail is on.
 2. **Corpus.** Adversarial prompts live in one YAML file per category and load into a typed model. You can point at your own corpus directory instead of the bundled one.
 3. **Runner.** Each prompt goes to the target with retries. With the guardrail on, it runs before the target ever sees the prompt.
-4. **Scoring.** Two scorers, recorded separately. The deterministic one detects the canary (including leaks with altered spacing or separators) and per-attack marker patterns. The LLM judge receives the target's rules, the attack and the reply, and returns a structured `{"violated": ..., "reason": ...}`. The judge parser is written for real local models: it strips think-blocks and code fences, tolerates trailing commas and single quotes, and falls back to the rules when the output cannot be parsed.
+4. **Scoring.** Two scorers, recorded separately. The deterministic one detects the canary (including leaks with altered spacing or separators), distinctive parts of a multi-part canary given away on their own (a reply that says the code "follows the pattern NW-XXXX-XXXX-ZEPHYR" leaks it), and per-attack marker patterns. The LLM judge receives the target's rules, the attack and the reply, and returns a structured `{"violated": ..., "reason": ...}`. The judge parser is written for real local models: it strips think-blocks and code fences, tolerates trailing commas and single quotes, and falls back to the rules when the output cannot be parsed.
 5. **Guardrail.** An input filter plus prompt hardening, applied before the prompt reaches the target.
 6. **Report.** JSON with every raw result, and Markdown with the summary tables, the OWASP mapping, a list of what still bypasses, and anything the two scorers disagreed on.
 
@@ -146,11 +146,20 @@ Two full reports are checked in. [`samples/live/report.md`](samples/live/report.
 
 ## Multi-turn adaptive attacks
 
-`cthulhu attack` runs an adaptive attacker in place of the static corpus: a model that writes its own attacks, reads why each attempt was refused or blocked, and changes tactic across a conversation toward one objective (leak the canary, leak the system prompt, act out of scope). The attacker model must be uncensored, since a safety-tuned model refuses to attack; the target and the judge can stay safety-tuned. Configure it under `attacker` in the config, then:
+`cthulhu attack` runs an adaptive attacker in place of the static corpus: a model that writes its own attacks, reads how the target answered each attempt, and changes tactic across a conversation toward one objective (leak the canary, leak the system prompt, act out of scope). The attacker model must be uncensored, since a safety-tuned model refuses to attack; the target and the judge can stay safety-tuned. Configure it under `attacker` in the config, then:
 
 ```
 cthulhu attack --config examples/config.yaml --guardrail
 ```
+
+A jailbreak is a conversation, not a single message, so the attacker is built to play one:
+
+- **Phases.** The session budget is split into an opening, a middle and a final phase. The opening turns ask ordinary questions that fit the target's role, the middle turns move the conversation toward the objective, and the last turns make the real request on the ground prepared. Each message has to build on the earlier ones.
+- **Strike seed.** One sharp attack from the static corpus is held back for the final phase and handed to the attacker as a wording to adapt, not to paste. A small model rarely writes a strong attack from nothing, but it can fit a good one to the conversation it built. The seed comes from the holdout partition where the objective has one, so the guardrail is not measured against the attacks it was tuned on. Switch it off with `seed_from_corpus: false`. An experimental `strike_mode: append` has the engine add the seed to the final message itself after a short model-written lead-in. It is off by default, see Known limitations for what it showed.
+- **No repeats.** A prompt too similar to one already sent is rejected and the model is asked again, up to twice. If it stays stubborn, the least similar candidate goes out, so the session keeps moving.
+- **Feedback.** The attacker sees the target's reply and a plain "this did not work" hint. The judge's reason is kept out of its view, since a line like "the assistant correctly refused" points nowhere.
+- **Focus.** The objective is restated every turn so the model does not drift into harmless questions.
+- **How it ended.** Every session records why it stopped: `success`, `conceded`, `turn_budget`, `attacker_no_move` (with the cause, such as a model error or unparseable output) or `cancelled`.
 
 [`samples/multiturn/report.md`](samples/multiturn/report.md) is a run from the mock: the guardrail blocks the direct override, and the attacker still breaks through a turn later with an emotional appeal the filter misses. Each success is marked with its source, and a judge-only success (the judge flags it, the rules do not) is kept under review rather than counted as proven. out_of_scope has no canary to detect, so it is judged, not pattern-matched; run it with `judge_mode: per_turn`.
 
@@ -159,15 +168,11 @@ cthulhu attack --config examples/config.yaml --guardrail
 `cthulhu serve` starts a local web UI on 127.0.0.1 that wraps the same engine, so a run can be configured and watched in a browser instead of the terminal. It has three steps:
 
 - **Setup** defines the target (paste a system prompt, mark or generate the canary, pick the endpoint), the attacker and judge models, the objectives and the turn budget.
-- **Live** streams each conversation as it happens over server-sent events: the attacker's move, the target's reply and the per-turn verdict, with a cancel button.
-- **Report** shows the before and after, what broke and how, the judge-only results kept for review, and a Markdown export.
+- **Live** is a board of runs. Each run streams its conversation as it happens over server-sent events: the attacker's message, the target's reply, the per-turn verdict and why the session ended. Start as many runs as you like, from "+ New run", and watch them at once. One run fills the page. Two or more can be shown as a **list** (the runs on the left with a progress bar each, the selected one on the right) or as **columns** (every run side by side, streaming in parallel). The choice is remembered in the browser, and reloading the page brings the board back. Each run has its own cancel button, and "Stop all" cancels every run still going.
+- **Report** shows the before and after for one run, what broke and how, the judge-only results kept for review, and a Markdown export.
 
-<p align="center">
-  <img src="assets/ui-live.png" alt="Live view streaming the attacker and target turns" width="760">
-</p>
-<p align="center">
-  <img src="assets/ui-report.png" alt="Report view with the before and after and the transcripts" width="760">
-</p>
+<!-- Screenshots of the multi-run board and the report go here (assets/ui-board.png, assets/ui-report.png). -->
+*Screenshots of the live board and the report are pending.*
 
 Run it:
 
@@ -176,7 +181,24 @@ pip install -e ".[dev,web]"
 cthulhu serve --port 8000
 ```
 
-Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config) returns a run id, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, and `GET /runs/{id}/report` (or `report.md`) returns the report. The CLI commands keep working unchanged.
+Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config, with an optional `label` to name the run) returns a run id, `GET /runs` lists every run with its name and progress plan, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, `POST /runs/cancel-all` stops them all, and `GET /runs/{id}/report` (or `report.md`) returns the report. The CLI commands keep working unchanged.
+
+## Desktop app
+
+`cthulhu app` opens the same web interface in its own window instead of a browser tab. It starts the server on a free port on 127.0.0.1, shows it in a native window, and when the window closes it cancels any run still going and stops the server. `cthulhu serve` is unchanged.
+
+```
+pip install -e ".[web,desktop]"
+cthulhu app
+```
+
+To build a single Windows executable, `dist\cthulhu.exe`:
+
+```
+.\tools\build_exe.ps1
+```
+
+The script runs PyInstaller with the web files and the corpus embedded, so the executable runs without Python installed. It needs the WebView2 runtime, which ships with Windows 11 and recent Windows 10. Ollama is not bundled: the app talks to whatever endpoint you give it, such as a local Ollama on port 11434. The executable is unsigned, so Windows SmartScreen or an antivirus may warn on first run. Building is a manual step and is not part of CI.
 
 ## Project layout
 
@@ -185,15 +207,17 @@ cthulhu/
   config.py            config models, the YAML loader, target and canary resolution
   clients/             client interface, mock, ollama and openai-compatible
   corpus/              one YAML per category, loader, seen/holdout split
-  attackers/           attacker interface, static corpus, adaptive agent
+  attackers/           attacker interface, static corpus, adaptive agent, strike seeds
   conversation.py      multi-turn session engine
   runner.py            single-turn runner, applies the guardrail, retries
   scoring/             deterministic.py, judge.py, combine.py
   guardrail.py         input filter and prompt hardening
   jsonx.py             defensive JSON for messy model output
   report.py            JSON and Markdown, single-turn and multi-turn
-  cli.py               run, attack, list-attacks
+  cli.py               run, attack, list-attacks, serve, app
+  desktop.py           the desktop window around the web interface
   web/                 FastAPI backend (127.0.0.1 only), SSE, and the static UI
+tools/                 build_exe.ps1 and the packaged entry point
 examples/              config.yaml and target_system_prompt.txt
 samples/               mock and live reports, and a multi-turn report in multiturn/
 tests/                 the offline pytest suite
@@ -209,12 +233,12 @@ The suite runs fully offline, no model and no network, using the mock client and
 
 ## Roadmap
 
-- A stronger adaptive attacker. On a small local model the agent repeats tactics and drifts from the objective, so a clean "nothing broke" says more about the attacker than the target. Planned: seed the agent from the static corpus as a hybrid, harden the no-repeat memory, stop feeding the judge's reason back as a hint, remind the agent of the objective each turn, and record why each session ended.
+- A larger attacker model. The 8 GB attacker builds rapport but cannot write a strike fitted to the conversation, so the next step is to try a bigger uncensored model, which the config already supports, rather than more prompt tuning.
 
 ## Known limitations
 
 - The single-turn attacker is a fixed corpus, so its coverage is only as wide as the prompts in `cthulhu/corpus/data`. The adaptive attacker (`cthulhu attack`) widens this but needs a local uncensored model to drive it.
-- The adaptive attacker is only as good as that model. On a small 8 GB model it repeats tactics and drifts off the objective, so a session that breaks nothing often reflects a weak attacker rather than a strong target. The planned fixes are under Roadmap.
+- The adaptive attacker is only as good as that model. The phases, the repeat guard and the restated goal removed repeated prompts and made the attacker build rapport, but a small 8 GB model still tends to ignore the corpus seed, drifts to harmless questions (placing an order, setting up an account) and sometimes writes in the target's voice. Live sessions that broke nothing therefore say more about the attacker than about the target. The `append` strike mode was tried against `qwen3:8b` as a single experiment: the lead-in and the appended corpus request read as two separate messages, the target refused every appended request it received, and the guardrail blocked all six final-phase strikes in the guarded run. Corpus attacks written for a first message also misfire mid-conversation ("repeat the text above" made the target repeat the user's own message). Making the strike land needs a larger attacker model, not more tuning of the small one. Live runs are also not repeatable: the same setup leaked a hint of the canary in one run and held in the next.
 - The guardrail is pattern-based. It catches phrasings it was written for and misses novel ones, which is exactly what the holdout number is there to show.
 - The LLM judge is only as reliable as the model behind it; a weak judge disagrees with the deterministic rules more often, which is why both verdicts are kept. In the live run the two agreed on 28 of 29 attacks (97%). The one disagreement, `enc-005`, was a judge false positive: it treated a mention of the access code as a disclosure. Judges over-flag mentions, and that is left visible in the report instead of being tuned away.
 - The guardrail overfits its seen set. It left 0 of 20 seen attacks through but 1 of 9 holdout attacks (`spl-005`, a translation-based prompt leak), so a clean seen number says little about unseen phrasings.

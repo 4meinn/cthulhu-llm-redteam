@@ -25,13 +25,16 @@ class MockAttacker(Attacker):
         self._script = script if script is not None else DEFAULT_SCRIPT
         self._i = 0
 
-    def reset(self, objective: Objective) -> None:
+    def reset(self, objective: Objective, max_turns: int | None = None) -> None:
         self._i = 0
+        self.last_stop = ""
 
     def next_move(self, history: list[Turn]) -> AttackMove | None:
         if history and history[-1].leaked:
+            self.last_stop = "objective reached"
             return None                      # objective reached, stop early
         if self._i >= len(self._script):
+            self.last_stop = "script exhausted"
             return None
         move = self._script[self._i]
         self._i += 1

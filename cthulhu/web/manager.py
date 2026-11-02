@@ -18,9 +18,11 @@ from ..report import build_session_report
 
 
 class Run:
-    def __init__(self, run_id: str, meta: dict) -> None:
+    def __init__(self, run_id: str, meta: dict, label: str = "", plan: dict | None = None) -> None:
         self.id = run_id
         self.meta = meta
+        self.label = label
+        self.plan = plan or {}
         self.status = "running"          # running | done | cancelled | error
         self.events: list[dict] = []
         self.report: dict | None = None
@@ -49,6 +51,15 @@ def _meta(cfg: RunConfig) -> dict:
     }
 
 
+def _plan(cfg: RunConfig) -> dict:
+    """What a run will do, so the UI can show progress: sessions are objectives x phases."""
+    return {
+        "objectives": len(cfg.attacker.objectives),
+        "phases": 2 if cfg.guardrail else 1,
+        "max_turns": cfg.attacker.max_turns,
+    }
+
+
 class RunManager:
     def __init__(self) -> None:
         self._runs: dict[str, Run] = {}
@@ -57,14 +68,24 @@ class RunManager:
     def start(self, cfg: RunConfig) -> str:
         if cfg.attacker is None:
             raise ValueError("config has no 'attacker' section")
-        run = Run(uuid.uuid4().hex, _meta(cfg))
         with self._lock:
+            label = (cfg.label or "").strip() or f"{cfg.target.model} #{len(self._runs) + 1}"
+            run = Run(uuid.uuid4().hex, _meta(cfg), label, _plan(cfg))
             self._runs[run.id] = run
         threading.Thread(target=self._worker, args=(run, cfg), daemon=True).start()
         return run.id
 
     def get(self, run_id: str) -> Run | None:
         return self._runs.get(run_id)
+
+    def list(self) -> list[Run]:
+        """Every run, oldest first."""
+        with self._lock:
+            return list(self._runs.values())
+
+    def cancel_all(self) -> int:
+        """Ask every running run to stop. Returns how many were still running."""
+        return sum(self.cancel(run.id) for run in self.list())
 
     def cancel(self, run_id: str) -> bool:
         run = self._runs.get(run_id)

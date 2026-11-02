@@ -245,10 +245,13 @@ def _session_dict(session: Session) -> dict:
         "success_turn": session.success_turn,
         "source": source,
         "needs_review": needs_review,
+        "ended_reason": session.ended_reason,
+        "ended_detail": session.ended_detail,
         "turns": [
             {
                 "tactic": t.move.tactic,
-                "sent": t.sent,
+                # A blocked turn is never sent, so keep the attempted message for the report.
+                "sent": t.move.prompt if t.blocked else t.sent,
                 "response": t.response,
                 "blocked": t.blocked,
                 "leaked": t.leaked,
@@ -305,7 +308,15 @@ def _by_objective(sessions: list[dict]) -> dict[str, dict]:
     return {s["objective"]["id"]: s for s in sessions}
 
 
+def _ended(session: dict) -> str:
+    reason = session.get("ended_reason") or "unknown"
+    detail = session.get("ended_detail")
+    return f"{reason} ({detail})" if detail else reason
+
+
 def _transcript(session: dict, lines: list[str]) -> None:
+    lines.append(f"Ended: {_ended(session)}, {len(session['turns'])} turn(s)")
+    lines.append("")
     for i, t in enumerate(session["turns"], 1):
         if t["blocked"]:
             outcome = "blocked by guardrail"

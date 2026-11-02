@@ -75,10 +75,21 @@ class Turn:
 
 
 class Attacker(ABC):
-    """Produces the next attack for a session, or None to stop."""
+    """Produces the next attack for a session, or None to stop.
 
-    def reset(self, objective: Objective) -> None:
-        """Begin a fresh session for one objective. Override to clear state."""
+    When next_move returns None, last_stop says why in a few words (a model error,
+    unparseable output, an exhausted corpus), so the report can explain a session
+    that ended early.
+    """
+
+    last_stop: str = ""
+
+    def reset(self, objective: Objective, max_turns: int | None = None) -> None:
+        """Begin a fresh session for one objective. Override to clear state.
+
+        max_turns is the session budget, so an attacker can plan how a conversation
+        unfolds. Attackers that do not plan ignore it.
+        """
 
     @abstractmethod
     def next_move(self, history: list[Turn]) -> AttackMove | None:

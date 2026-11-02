@@ -93,6 +93,7 @@ Rules:
 
       <fieldset>
         <legend>Run</legend>
+        <label>Name (optional, shown on the board) <input name="label" placeholder="Mira"></label>
         <div class="objectives">
           <span>Objectives</span>
           <label><input type="checkbox" name="objective" value="leak_canary" checked> leak_canary</label>
@@ -105,28 +106,38 @@ Rules:
       </fieldset>
 
       <p id="setup-error" class="error hidden"></p>
-      <button type="submit">Run</button>
+      <button type="submit">Start run</button>
     </form>
   </section>
 
   <section id="live" class="view hidden">
     <div class="bar">
-      <span>Status: <b id="live-status">running</b></span>
-      <button id="cancel-btn" type="button">Cancel</button>
-      <button id="to-report-btn" type="button" class="hidden">View report</button>
+      <button id="new-run-btn" type="button">+ New run</button>
+      <button id="stop-all-btn" type="button" class="ghost">Stop all</button>
+      <span id="board-meta" class="meta"></span>
+      <div id="layout-toggle" class="segment hidden" role="group" aria-label="Layout">
+        <button type="button" data-layout="C" aria-pressed="true" title="Run list on the left, selected run on the right">List</button>
+        <button type="button" data-layout="A" aria-pressed="false" title="Every run in its own column">Columns</button>
+      </div>
     </div>
-    <div id="live-log"></div>
+    <div id="board" class="board layout-single">
+      <div id="run-list" class="run-list"></div>
+      <div id="run-panels" class="run-panels"></div>
+    </div>
   </section>
 
   <section id="report" class="view hidden">
     <div class="bar">
+      <button id="back-to-board" type="button" class="ghost">Back to board</button>
       <button id="back-to-setup" type="button">New run</button>
       <a id="md-link" href="#" target="_blank" rel="noopener">Export Markdown</a>
     </div>
+    <h2 id="report-title"></h2>
     <div id="report-body"></div>
   </section>
 </main>
 
+<script src="/static/layout.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Callable
 
-from .attackers import AdaptiveAttacker, Attacker, CorpusAttacker, DEFAULT_OBJECTIVES, Objective
+from .attackers import (
+    AdaptiveAttacker, Attacker, CorpusAttacker, DEFAULT_OBJECTIVES, Objective, seed_picker,
+)
 from .clients import build_client
 from .config import RunConfig
 from .conversation import Session, run_campaign
@@ -24,7 +26,9 @@ def build_attacker(cfg: RunConfig, canary: str) -> Attacker:
         if cfg.attacker.endpoint is None:
             raise ValueError("adaptive strategy needs an attacker.endpoint in the config")
         client = build_client(cfg.attacker.endpoint, canary, role="attacker")
-        return AdaptiveAttacker(client, max_history=cfg.attacker.max_history_turns)
+        seeds = seed_picker(load_corpus([], cfg.corpus_dir)) if cfg.attacker.seed_from_corpus else None
+        return AdaptiveAttacker(client, max_history=cfg.attacker.max_history_turns, seeds=seeds,
+                                strike_mode=cfg.attacker.strike_mode)
     return CorpusAttacker(load_corpus(cfg.categories, cfg.corpus_dir))
 
 

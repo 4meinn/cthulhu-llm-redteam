@@ -171,12 +171,8 @@ A jailbreak is a conversation, not a single message, so the attacker is built to
 - **Live** is a board of runs. Each run streams its conversation as it happens over server-sent events: the attacker's message, the target's reply, the per-turn verdict and why the session ended. Start as many runs as you like, from "+ New run", and watch them at once. One run fills the page. Two or more can be shown as a **list** (the runs on the left with a progress bar each, the selected one on the right) or as **columns** (every run side by side, streaming in parallel). The choice is remembered in the browser, and reloading the page brings the board back. Each run has its own cancel button, and "Stop all" cancels every run still going.
 - **Report** shows the before and after for one run, what broke and how, the judge-only results kept for review, and a Markdown export.
 
-<p align="center">
-  <img src="assets/ui-live.png" alt="Live view streaming the attacker and target turns" width="760">
-</p>
-<p align="center">
-  <img src="assets/ui-report.png" alt="Report view with the before and after and the transcripts" width="760">
-</p>
+<!-- Screenshots of the multi-run board and the report go here (assets/ui-board.png, assets/ui-report.png). -->
+*Screenshots of the live board and the report are pending.*
 
 Run it:
 

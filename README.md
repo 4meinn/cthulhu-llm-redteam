@@ -187,6 +187,23 @@ cthulhu serve --port 8000
 
 Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config, with an optional `label` to name the run) returns a run id, `GET /runs` lists every run with its name and progress plan, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, `POST /runs/cancel-all` stops them all, and `GET /runs/{id}/report` (or `report.md`) returns the report. The CLI commands keep working unchanged.
 
+## Desktop app
+
+`cthulhu app` opens the same web interface in its own window instead of a browser tab. It starts the server on a free port on 127.0.0.1, shows it in a native window, and when the window closes it cancels any run still going and stops the server. `cthulhu serve` is unchanged.
+
+```
+pip install -e ".[web,desktop]"
+cthulhu app
+```
+
+To build a single Windows executable, `dist\cthulhu.exe`:
+
+```
+.\tools\build_exe.ps1
+```
+
+The script runs PyInstaller with the web files and the corpus embedded, so the executable runs without Python installed. It needs the WebView2 runtime, which ships with Windows 11 and recent Windows 10. Ollama is not bundled: the app talks to whatever endpoint you give it, such as a local Ollama on port 11434. The executable is unsigned, so Windows SmartScreen or an antivirus may warn on first run. Building is a manual step and is not part of CI.
+
 ## Project layout
 
 ```
@@ -201,8 +218,10 @@ cthulhu/
   guardrail.py         input filter and prompt hardening
   jsonx.py             defensive JSON for messy model output
   report.py            JSON and Markdown, single-turn and multi-turn
-  cli.py               run, attack, list-attacks
+  cli.py               run, attack, list-attacks, serve, app
+  desktop.py           the desktop window around the web interface
   web/                 FastAPI backend (127.0.0.1 only), SSE, and the static UI
+tools/                 build_exe.ps1 and the packaged entry point
 examples/              config.yaml and target_system_prompt.txt
 samples/               mock and live reports, and a multi-turn report in multiturn/
 tests/                 the offline pytest suite
@@ -219,8 +238,6 @@ The suite runs fully offline, no model and no network, using the mock client and
 ## Roadmap
 
 - A larger attacker model. The 8 GB attacker builds rapport but cannot write a strike fitted to the conversation, so the next step is to try a bigger uncensored model, which the config already supports, rather than more prompt tuning.
-- A multi-run view in the web interface, so several runs can be watched side by side.
-- A desktop app that wraps the local web interface in its own window.
 
 ## Known limitations
 

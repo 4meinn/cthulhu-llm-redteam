@@ -47,6 +47,8 @@ def _parser() -> argparse.ArgumentParser:
 
     sv = sub.add_parser("serve", help="run the local web backend on 127.0.0.1")
     sv.add_argument("--port", type=int, default=8000)
+
+    sub.add_parser("app", help="open the web interface in a desktop window")
     return p
 
 
@@ -195,6 +197,16 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_app() -> int:
+    from .desktop import DesktopError, run_desktop
+
+    try:
+        return run_desktop()
+    except (DesktopError, ImportError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+
 def _cmd_list(args: argparse.Namespace) -> int:
     try:
         attacks = load_corpus(args.category)
@@ -216,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_attack(args, color)
     if args.command == "serve":
         return _cmd_serve(args)
+    if args.command == "app":
+        return _cmd_app()
     return _cmd_list(args)
 
 

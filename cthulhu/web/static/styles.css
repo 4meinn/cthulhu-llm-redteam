@@ -121,6 +121,7 @@ td { background: var(--surface); }
 h2 { font-size: 12px; margin: 22px 0 8px; color: var(--primary); text-transform: uppercase; letter-spacing: 1.4px; font-weight: 700; }
 h3 { font-size: 13px; margin: 14px 0 4px; color: var(--primary-bright); }
 .meta { color: var(--muted); font-size: 13px; }
+h2, h3, .meta, #report-body { overflow-wrap: anywhere; }
 
 /* ---- live board ---------------------------------------------------------- */
 
@@ -207,6 +208,8 @@ h3 { font-size: 13px; margin: 14px 0 4px; color: var(--primary-bright); }
 
 @media (max-width: 700px) {
   .setup-grid { grid-template-columns: minmax(0, 1fr); }
+  /* columns would need more room than the window has, so stack them instead of scrolling */
+  .layout-A .run-panels { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: minmax(0, 1fr); overflow-x: visible; }
 }
 
 @media (max-width: 760px) {

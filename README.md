@@ -168,8 +168,8 @@ A jailbreak is a conversation, not a single message, so the attacker is built to
 `cthulhu serve` starts a local web UI on 127.0.0.1 that wraps the same engine, so a run can be configured and watched in a browser instead of the terminal. It has three steps:
 
 - **Setup** defines the target (paste a system prompt, mark or generate the canary, pick the endpoint), the attacker and judge models, the objectives and the turn budget.
-- **Live** streams each conversation as it happens over server-sent events: the attacker's move, the target's reply and the per-turn verdict, with a cancel button.
-- **Report** shows the before and after, what broke and how, the judge-only results kept for review, and a Markdown export.
+- **Live** is a board of runs. Each run streams its conversation as it happens over server-sent events: the attacker's message, the target's reply, the per-turn verdict and why the session ended. Start as many runs as you like, from "+ New run", and watch them at once. One run fills the page. Two or more can be shown as a **list** (the runs on the left with a progress bar each, the selected one on the right) or as **columns** (every run side by side, streaming in parallel). The choice is remembered in the browser, and reloading the page brings the board back. Each run has its own cancel button, and "Stop all" cancels every run still going.
+- **Report** shows the before and after for one run, what broke and how, the judge-only results kept for review, and a Markdown export.
 
 <p align="center">
   <img src="assets/ui-live.png" alt="Live view streaming the attacker and target turns" width="760">
@@ -185,7 +185,7 @@ pip install -e ".[dev,web]"
 cthulhu serve --port 8000
 ```
 
-Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config) returns a run id, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, and `GET /runs/{id}/report` (or `report.md`) returns the report. The CLI commands keep working unchanged.
+Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config, with an optional `label` to name the run) returns a run id, `GET /runs` lists every run with its name and progress plan, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, `POST /runs/cancel-all` stops them all, and `GET /runs/{id}/report` (or `report.md`) returns the report. The CLI commands keep working unchanged.
 
 ## Project layout
 

@@ -67,7 +67,7 @@ fieldset {
 .setup-col > fieldset { margin: 0; }
 #run-form { overflow-wrap: anywhere; }
 #run-form textarea { resize: vertical; }
-#run-form textarea[name="system_prompt"] { min-height: 290px; min-height: 16lh; field-sizing: content; }
+#run-form textarea[name="system_prompt"] { min-height: 326px; field-sizing: content; }
 legend { font-weight: 700; font-size: 11px; padding: 0 6px; color: var(--primary); text-transform: uppercase; letter-spacing: 1.4px; }
 label { display: block; margin: 7px 0; font-size: 12px; color: var(--muted); }
 label.inline, .objectives label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }

@@ -20,7 +20,7 @@ Prompt injection and jailbreak testing for LLM applications you own. Cthulhu run
 - **Attack categories**: direct injection, jailbreak, system-prompt leak, indirect injection, encoding evasion
 - **Scoring**: deterministic rules plus an LLM judge, recorded separately
 - **License**: MIT
-- **Status**: v0.4.0, MVP, multi-turn adaptive engine, a local web interface with a multi-run board, a desktop app, the MVP validated against a live local model
+- **Status**: v0.5.0, MVP, multi-turn adaptive engine, a local web interface with a multi-run board, a desktop app, the MVP validated against a live local model
 
 ## Authorized use
 
@@ -171,8 +171,17 @@ A jailbreak is a conversation, not a single message, so the attacker is built to
 - **Live** is a board of runs. Each run streams its conversation as it happens over server-sent events: the attacker's message, the target's reply, the per-turn verdict and why the session ended. Start as many runs as you like, from "+ New run", and watch them at once. One run fills the page. Two or more can be shown as a **list** (the runs on the left with a progress bar each, the selected one on the right) or as **columns** (every run side by side, streaming in parallel). The choice is remembered in the browser, and reloading the page brings the board back. Each run has its own cancel button, and "Stop all" cancels every run still going.
 - **Report** shows the before and after for one run, what broke and how, the judge-only results kept for review, and a Markdown export.
 
-<!-- Screenshots of the multi-run board and the report go here (assets/ui-board.png, assets/ui-report.png). -->
-*Screenshots of the live board and the report are pending.*
+<p align="center">
+  <img src="assets/ui-board.png" alt="The multi-run board in columns view, three runs against qwen3:8b" width="880">
+</p>
+
+*Three runs against a real qwen3:8b target (Ollama) with the guardrail on. Run 3 broke at turn 19; the other two held until the turn budget ran out.*
+
+<p align="center">
+  <img src="assets/ui-report.png" alt="The report for run 3, baseline held and guarded run met at turn 19" width="760">
+</p>
+
+*The baseline held every vector. The guarded run broke at turn 19 through a story-framed jailbreak that got past the guardrail (OWASP LLM01).*
 
 Run it:
 

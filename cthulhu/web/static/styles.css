@@ -67,6 +67,7 @@ fieldset {
 .setup-col > fieldset { margin: 0; }
 #run-form { overflow-wrap: anywhere; }
 #run-form textarea { resize: vertical; }
+#run-form textarea[name="system_prompt"] { min-height: 290px; min-height: 16lh; field-sizing: content; }
 legend { font-weight: 700; font-size: 11px; padding: 0 6px; color: var(--primary); text-transform: uppercase; letter-spacing: 1.4px; }
 label { display: block; margin: 7px 0; font-size: 12px; color: var(--muted); }
 label.inline, .objectives label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
@@ -84,8 +85,8 @@ textarea { font-family: ui-monospace, monospace; font-size: 12px; line-height: 1
 .objectives { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: center; margin: 7px 0; }
 .objectives > span { font-size: 12px; color: var(--muted); }
 .hint { color: var(--muted); font-size: 11px; margin: 4px 0 2px; opacity: 0.85; line-height: 1.4; }
-#run-form > button[type="submit"] { width: 100%; padding: 9px 20px; margin-top: var(--gap); }
-#run-form > .error { margin: var(--gap) 0 0; }
+#run-form .setup-col > button[type="submit"] { width: 100%; padding: 8px 20px; }
+#run-form .setup-col > .error { margin: 0; }
 
 button {
   font: inherit; font-weight: 600; padding: 7px 16px; border: 0; border-radius: 7px;

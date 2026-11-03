@@ -84,6 +84,10 @@ The guardrail took the bypass count from 7 down to 1. By partition, `seen` went 
 
 For comparison, the offline mock target (a deliberately vulnerable stand-in) bypasses 23 of 29 and falls to 5 with the guardrail. The live target is far sturdier than the mock, so the mock numbers describe the harness, not a real system.
 
+## Writeups
+
+- [Breaking a guarded support bot](writeups/narrative-jailbreak-vs-pattern-guardrail.md): a story-framed jailbreak gets a canary past a pattern-based input guardrail on a local qwen3:8b target.
+
 ## Install
 
 ```

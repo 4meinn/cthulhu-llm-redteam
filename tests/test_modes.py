@@ -81,3 +81,8 @@ def test_the_attack_run_still_runs_baseline_then_guarded():
     assert len(baseline) == 1 and guarded is not None and len(guarded) == 1
     report = build_session_report(baseline, guarded, run_meta(_cfg(strategy="adaptive")))
     assert {r.mode for r in records_from_report(report)} == {"campaign"}
+
+
+def test_a_corpus_run_names_no_attacker_model_even_when_the_config_has_one():
+    assert run_meta(_cfg(strategy="corpus"))["attacker_model"] is None
+    assert run_meta(_cfg(strategy="adaptive"))["attacker_model"] == "mock:qwen3:8b"

@@ -239,7 +239,8 @@ def _success_source(session: Session) -> tuple[str | None, bool]:
 def run_meta(cfg: RunConfig) -> dict:
     """The run settings every multi-turn report carries, shared by the CLI and the web."""
     attacker = cfg.attacker
-    endpoint = attacker.endpoint if attacker else None
+    # only an adaptive attacker uses its model, a corpus run has none to name
+    endpoint = attacker.endpoint if attacker and attacker.strategy == "adaptive" else None
     return {
         "target": f"{cfg.target.provider}:{cfg.target.model}",
         "judge": f"{cfg.judge.provider}:{cfg.judge.model}" if cfg.judge else None,

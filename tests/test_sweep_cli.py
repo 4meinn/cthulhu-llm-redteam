@@ -37,6 +37,8 @@ def test_the_shipped_example_runs_end_to_end_and_writes_the_tables(tmp_path, cap
     assert "12 run(s) finished, 0 already done, 0 failed" in text
     assert len(list((out / "runs").glob("*.results.json"))) == 12
     assert (out / "sweep.json").is_file() and (out / "asr.csv").is_file() and (out / "asr.md").is_file()
+    assert (out / "matrix.md").is_file() and (out / "matrix.csv").is_file()
+    assert "Defence matrix by category" in (out / "matrix.md").read_text(encoding="utf-8")
     rows = list(csv.DictReader(io.StringIO((out / "asr.csv").read_text(encoding="utf-8"))))
     config = [r for r in rows if r["level"] == "config"]
     assert {(r["guardrail"], r["mode"]) for r in config} == {
@@ -93,6 +95,18 @@ def test_aggregate_defaults_to_the_folder_it_was_given(tmp_path, capsys):
     (tmp_path / "out" / "asr.md").unlink()
     assert main(["--no-color", "aggregate", str(tmp_path / "out")]) == 0
     assert (tmp_path / "out" / "asr.md").is_file()
+
+
+def test_aggregate_writes_the_matrix_and_all_keeps_the_empty_vector_rows(tmp_path, capsys):
+    fixture = "tests/fixtures/smoke"
+    default, everything = tmp_path / "default", tmp_path / "everything"
+    assert main(["--no-color", "aggregate", fixture, "--out", str(default)]) == 0
+    assert main(["--no-color", "aggregate", fixture, "--out", str(everything), "--all"]) == 0
+    short = (default / "matrix.md").read_text(encoding="utf-8")
+    full = (everything / "matrix.md").read_text(encoding="utf-8")
+    assert (default / "matrix.csv").is_file()
+    assert "enc-001" in full and "enc-001" not in short       # nothing leaked and nothing blocked
+    assert "jb-002" in short
 
 
 def test_aggregate_with_nothing_to_read_is_an_error(tmp_path, capsys):

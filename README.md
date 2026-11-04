@@ -208,7 +208,15 @@ Running both on the same target and guardrail shows whether a vector breaks on i
 
 **Sampling is not pinned.** A run uses the model's own default sampling, so the repeats measure how much results vary. An endpoint can set `temperature` in the config, and it is passed through to Ollama and OpenAI-compatible servers. `sweep.json` records the sampling per cell, and an unset value is written as "endpoint/model default, unspecified", with the seed as "not set", so the setting is on record whichever way it went.
 
-**Aggregating.** `cthulhu aggregate` reads any mix of sweep folders and `results.json` files (each file once: a run id that turns up in a second file is skipped, so a file given twice is not counted twice) and writes `asr.csv` and `asr.md`. A sweep does this for its own folder when it ends. Rates are grouped by config, which is target, guardrail mode, strategy, attacker model and mode, so isolated and campaign rows are never mixed.
+**Aggregating.** `cthulhu aggregate` reads any mix of sweep folders and `results.json` files (each file once: a run id that turns up in a second file is skipped, so a file given twice is not counted twice) and writes `asr.csv` and `asr.md` and the comparison matrices below. A sweep does this for its own folder when it ends. Rates are grouped by config, which is target, guardrail mode, strategy, attacker model and mode, so isolated and campaign rows are never mixed.
+
+**Comparison matrices.** `matrix.md` and `matrix.csv` lay the same counts out for comparison. Nothing is recomputed, a matrix cell is the ASR table's cell. There are four views.
+
+- **Defence matrix** (isolated). Per target, categories against the guardrail mode (`none`, `input`, and `output` and `both` once they exist, a mode with no data gets no column). A second table does the same per vector, hiding vectors where nothing leaked or was blocked, `cthulhu aggregate --all` keeps them. The per-vector rows matter: a category row hid that one system-prompt-leak vector walked straight through the input filter while its neighbours were blocked.
+- **Context effect.** For a target and guardrail, each vector alone (isolated) beside the same vector inside a campaign, with the turns the campaign won at. `only in context` marks a vector that won in a campaign and never on its own, `not reached` marks one the campaign never got to, which is not the same as 0.
+- **Session matrix.** Attacker (strategy and attacker model) against defender (target and guardrail): the share of campaign sessions that broke and at which turns. It stays sparse until adaptive sweeps are run, since a corpus attacker is one row.
+
+Every cell is a count with its percentage, and a `†` marks n under 10, where the count is the information and the rate is not. A guardrail column also shows the change against `none` in percentage points, and whether the two Wilson intervals are apart. Apart means a real difference is likely. Overlapping is unclear: it does not mean there is no difference, the sample may be too small to tell. It is not a significance test. A cell nothing ran in says `not run`, and judge-only successes sit beside a rate, never in it. The CSV is one tidy row per cell.
 
 ## Web interface
 
@@ -273,6 +281,8 @@ cthulhu/
   results.py           flat per-turn result records read from a report
   export.py            results.json and results.csv
   asr.py               attack success rate, merging results files, asr.csv and asr.md
+  matrix.py            comparison matrices built from the records
+  matrix_render.py     matrix.md and matrix.csv
   campaign.py          builds a run from a config: campaign and isolated modes
   sweep.py             sweep config, grid expansion, resumable runner
   cli.py               run, attack, sweep, aggregate, list-attacks, serve, app

@@ -14,6 +14,7 @@ from .config import load_config
 from .corpus import available_categories, load_corpus
 from .export import write_results
 from .guardrail import Guardrail
+from .matrix_render import write_matrix
 from .report import build_report, build_session_report, run_meta, write_report, write_session_report
 from .runner import AttackResult, run_attacks
 from .scoring import CombinedVerdict, combine, judge, score
@@ -63,7 +64,9 @@ def _parser() -> argparse.ArgumentParser:
 
     ag = sub.add_parser("aggregate", help="combine results files into attack success rates")
     ag.add_argument("paths", nargs="+", type=Path, help="results.json files, or sweep folders")
-    ag.add_argument("--out", type=Path, help="where to write asr.csv and asr.md")
+    ag.add_argument("--out", type=Path, help="where to write the asr and matrix files")
+    ag.add_argument("--all", action="store_true",
+                    help="keep the all-zero vector rows the matrix leaves out by default")
     return p
 
 
@@ -228,7 +231,8 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
     except ValueError:
         return 130 if result.cancelled else 1       # nothing finished, so nothing to tabulate
     csv_path, md_path = write_aggregate(records, sweep.out)
-    print(f"wrote {csv_path} and {md_path}")
+    matrix_md, matrix_csv = write_matrix(records, sweep.out)
+    print(f"wrote {csv_path}, {md_path}, {matrix_md} and {matrix_csv}")
     return 130 if result.cancelled else (1 if result.failed else 0)
 
 
@@ -243,8 +247,9 @@ def _cmd_aggregate(args: argparse.Namespace) -> int:
     out = args.out or (args.paths[0] if len(args.paths) == 1 and args.paths[0].is_dir()
                        else Path("out/aggregate"))
     csv_path, md_path = write_aggregate(records, out)
+    matrix_md, matrix_csv = write_matrix(records, out, show_all=args.all)
     print(f"{len(records)} session(s) from {len(result_files(args.paths))} file(s)")
-    print(f"wrote {csv_path} and {md_path}")
+    print(f"wrote {csv_path}, {md_path}, {matrix_md} and {matrix_csv}")
     return 0
 
 

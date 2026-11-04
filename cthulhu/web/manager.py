@@ -10,11 +10,22 @@ from __future__ import annotations
 
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from .. import campaign
+from ..campaign import PhaseEvent
 from ..config import RunConfig
 from ..report import build_session_report, run_meta
+
+
+# Produces a run's report: (config, on_event, should_stop) -> report dict. The default runs
+# the baseline and, with the guardrail on, the guarded campaign. A sweep passes its own.
+Runner = Callable[[RunConfig, PhaseEvent, Callable[[], bool]], dict]
+
+
+def _default_runner(cfg: RunConfig, on_event: PhaseEvent, should_stop: Callable[[], bool]) -> dict:
+    baseline, guarded = campaign.run_attack_run(cfg, on_event=on_event, should_stop=should_stop)
+    return build_session_report(baseline, guarded, run_meta(cfg))
 
 
 class Run:
@@ -55,14 +66,15 @@ class RunManager:
         self._runs: dict[str, Run] = {}
         self._lock = threading.Lock()
 
-    def start(self, cfg: RunConfig) -> str:
+    def start(self, cfg: RunConfig, runner: Runner | None = None) -> str:
         if cfg.attacker is None:
             raise ValueError("config has no 'attacker' section")
         with self._lock:
             label = (cfg.label or "").strip() or f"{cfg.target.model} #{len(self._runs) + 1}"
             run = Run(uuid.uuid4().hex, run_meta(cfg), label, _plan(cfg))
             self._runs[run.id] = run
-        threading.Thread(target=self._worker, args=(run, cfg), daemon=True).start()
+        threading.Thread(target=self._worker, args=(run, cfg, runner or _default_runner),
+                         daemon=True).start()
         return run.id
 
     def get(self, run_id: str) -> Run | None:
@@ -102,14 +114,12 @@ class RunManager:
             run._new.wait(timeout=0.5)
             run._new.clear()
 
-    def _worker(self, run: Run, cfg: RunConfig) -> None:
+    def _worker(self, run: Run, cfg: RunConfig, runner: Runner) -> None:
         def on_event(phase: str, kind: str, data: dict) -> None:
             run.emit({"phase": phase, "kind": kind, **data})
 
         try:
-            baseline, guarded = campaign.run_attack_run(
-                cfg, on_event=on_event, should_stop=run._cancel.is_set)
-            run.report = build_session_report(baseline, guarded, run.meta)
+            run.report = runner(cfg, on_event, run._cancel.is_set)
             run.status = "cancelled" if run._cancel.is_set() else "done"
         except Exception as exc:                 # a run must never take the server down
             run.error = str(exc)

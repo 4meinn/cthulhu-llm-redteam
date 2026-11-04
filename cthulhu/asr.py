@@ -182,6 +182,58 @@ def section_csv(section: dict[str, list[dict]]) -> str:
     return buf.getvalue()
 
 
+def result_files(paths: list[Path]) -> list[Path]:
+    """Expand folders to their results files. A sweep folder reads its runs/, any other
+    folder its *.results.json and results.json. A file is taken as it is."""
+    files: list[Path] = []
+    for path in paths:
+        if path.is_dir():
+            runs = path / "runs"
+            found = sorted((runs if runs.is_dir() else path).glob("*.results.json"))
+            if not runs.is_dir() and (path / "results.json").is_file():
+                found.append(path / "results.json")
+            files += found
+        elif path.is_file():
+            files.append(path)
+        else:
+            raise ValueError(f"no such file or folder: {path}")
+    if not files:
+        raise ValueError("no results files found")
+    return files
+
+
+def merge_results(files: list[Path]) -> tuple[list[SessionRecord], list[str]]:
+    """Read several results files as one set of records.
+
+    A run id names a run for good, so a run that turns up in a second file is dropped
+    and its id returned, which keeps a file passed twice from counting twice. Records
+    with no run id (a plain `cthulhu attack` output) cannot be told apart and all stay.
+    """
+    seen: set[str] = set()
+    records: list[SessionRecord] = []
+    skipped: list[str] = []
+    for file in files:
+        recs = records_from_json(file.read_text(encoding="utf-8"))
+        ids = {r.run_id for r in recs if r.run_id}
+        duplicate = ids & seen
+        if duplicate:
+            skipped += sorted(duplicate)
+            recs = [r for r in recs if r.run_id not in duplicate]
+        seen |= ids
+        records += recs
+    return records, skipped
+
+
+def write_aggregate(records: list[SessionRecord], out_dir: Path) -> tuple[Path, Path]:
+    """Write asr.csv and asr.md for any set of records."""
+    section = asr_section(records)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    md_path = out_dir / "asr.md"
+    md_path.write_text("# Cthulhu attack success rate\n\n" + "\n".join(section_markdown(section)),
+                       encoding="utf-8")
+    return write_asr(section, out_dir), md_path
+
+
 def write_asr(section: dict[str, list[dict]], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "asr.csv"

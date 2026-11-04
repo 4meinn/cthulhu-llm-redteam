@@ -15,8 +15,12 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import os
 import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -24,8 +28,14 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 from . import __version__
+from . import campaign
+from .campaign import PhaseEvent
 from .config import EndpointConfig, RunConfig, load_config
 from .corpus import load_corpus
+from .export import to_json
+from .report import build_phase_report, run_meta
+from .results import records_from_report
+from .web.manager import RunManager
 
 GUARDRAILS = ("none", "input")
 SAMPLING_DEFAULT = "endpoint/model default, unspecified"
@@ -239,3 +249,142 @@ def format_plan(plan: Plan, cells: list[Cell]) -> str:
     lines += [f"  {c.id}" for c in cells]
     lines += [f"warning: {w}" for w in plan.warnings]
     return "\n".join(lines)
+
+
+# --- running ----------------------------------------------------------------
+
+class SweepMismatch(ValueError):
+    """The folder holds a sweep made from a different plan."""
+
+
+@dataclass
+class RunSpec:
+    cell: Cell
+    repeat: int
+
+    @property
+    def id(self) -> str:
+        return run_id(self.cell, self.repeat)
+
+
+@dataclass
+class SweepResult:
+    done: list[str] = field(default_factory=list)       # runs finished and written this time
+    skipped: int = 0                                    # runs already on disk from before
+    failed: dict[str, str] = field(default_factory=dict)  # run id -> why it did not finish
+    cancelled: bool = False
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    """Write beside the target and rename, so the file is either whole or absent."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def prepare(plan: dict, out: Path) -> Path:
+    """Create the sweep folder and sweep.json, or check that an existing one is the same sweep.
+
+    Returns the runs folder. Leftover temp files from a run that was cut off are removed.
+    """
+    runs = out / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    stored = out / "sweep.json"
+    if stored.is_file():
+        old = json.loads(stored.read_text(encoding="utf-8"))
+        if old.get("fingerprint") != plan["fingerprint"]:
+            raise SweepMismatch(
+                f"{out} holds a sweep made from a different plan (config, prompt, corpus or "
+                "grid changed). Use a new output folder, or delete this one to start over.")
+        created = old.get("created")
+    else:
+        created = None
+    plan = {**plan, "created": created or datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    _write_atomic(stored, json.dumps(plan, indent=2, ensure_ascii=False))
+    for stale in runs.glob("*.tmp"):
+        stale.unlink()
+    return runs
+
+
+def pending_runs(cells: list[Cell], repeats: int, runs_dir: Path) -> tuple[list[RunSpec], int]:
+    """The runs not yet on disk, and how many were. Within a target the repeats go round the
+    cells, so an interrupted sweep has a balanced set of results, not all of the first cells."""
+    done = {p.name[: -len(".results.json")] for p in runs_dir.glob("*.results.json")}
+    order: dict[tuple[str, str], int] = {}
+    for cell in cells:
+        order.setdefault((cell.target.provider, cell.target.model), len(order))
+    specs = [(order[(c.target.provider, c.target.model)], rep, i, RunSpec(c, rep))
+             for i, c in enumerate(cells) for rep in range(1, repeats + 1)]
+    todo = [spec for *_, spec in sorted(specs, key=lambda t: t[:3]) if spec.id not in done]
+    return todo, len(specs) - len(todo)
+
+
+def _cell_runner(cell: Cell) -> Callable:
+    phase = "guarded" if cell.guardrail == "input" else "baseline"
+
+    def runner(cfg: RunConfig, on_event: PhaseEvent, should_stop: Callable[[], bool]) -> dict:
+        sessions = campaign.run_phase(
+            cfg, guardrail=cell.guardrail == "input", mode=cell.mode,
+            on_event=lambda kind, data: on_event(phase, kind, data), should_stop=should_stop)
+        return build_phase_report(sessions, phase, {**run_meta(cfg), "mode": cell.mode})
+
+    return runner
+
+
+def run_sweep(
+    sweep: SweepConfig,
+    base: RunConfig,
+    cells: list[Cell],
+    *,
+    manager: RunManager | None = None,
+    on_progress: Callable[[str, str, SweepResult, int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    poll: float = 0.05,
+) -> SweepResult:
+    """Run every pending run through the run manager, writing each result file as it finishes.
+
+    A run is written only when it completes, so what is on disk is always whole, and running
+    the same sweep again does the rest. on_progress(run_id, status, result, total_pending) is
+    called when a run ends. should_stop, or Ctrl+C, cancels what is running and returns.
+    """
+    manager = manager or RunManager()
+    runs_dir = prepare(describe(sweep, base, cells), sweep.out)
+    todo, skipped = pending_runs(cells, sweep.repeats, runs_dir)
+    result = SweepResult(skipped=skipped)
+    total = len(todo)
+    active: dict[str, RunSpec] = {}
+
+    def settle(manager_id: str, spec: RunSpec) -> None:
+        run = manager.get(manager_id)
+        if run.status == "done" and run.report is not None:
+            records = records_from_report(run.report, spec.id)
+            _write_atomic(runs_dir / f"{spec.id}.results.json", to_json(records))
+            result.done.append(spec.id)
+        else:
+            result.failed[spec.id] = run.error or run.status
+        if on_progress:
+            on_progress(spec.id, run.status, result, total)
+
+    try:
+        while todo or active:
+            if should_stop is not None and should_stop():
+                raise KeyboardInterrupt
+            while todo and len(active) < sweep.workers:
+                spec = todo.pop(0)
+                manager_id = manager.start(spec.cell.run_config(base, spec.id), runner=_cell_runner(spec.cell))
+                active[manager_id] = spec
+            time.sleep(poll)
+            for manager_id, spec in list(active.items()):
+                if manager.get(manager_id).terminal:
+                    del active[manager_id]
+                    settle(manager_id, spec)
+    except KeyboardInterrupt:
+        result.cancelled = True
+        manager.cancel_all()
+        while active:                       # let the cancelled runs wind down, none is written
+            time.sleep(poll)
+            for manager_id in [m for m in active if manager.get(m).terminal]:
+                spec = active.pop(manager_id)
+                if manager.get(manager_id).status == "done":   # it finished before the cancel landed
+                    settle(manager_id, spec)
+    return result

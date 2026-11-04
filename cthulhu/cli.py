@@ -7,16 +7,19 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .asr import merge_results, result_files, write_aggregate, write_asr
 from .campaign import run_attack_run
 from .clients import LLMClient, build_client
 from .config import load_config
 from .corpus import available_categories, load_corpus
-from .guardrail import Guardrail
-from .asr import write_asr
 from .export import write_results
+from .guardrail import Guardrail
 from .report import build_report, build_session_report, run_meta, write_report, write_session_report
 from .runner import AttackResult, run_attacks
 from .scoring import CombinedVerdict, combine, judge, score
+from .sweep import (
+    SweepMismatch, SweepResult, expand, format_plan, load_sweep, make_plan, run_sweep,
+)
 from .ui import BANNER, color_enabled, paint
 
 
@@ -51,6 +54,16 @@ def _parser() -> argparse.ArgumentParser:
     sv.add_argument("--port", type=int, default=8000)
 
     sub.add_parser("app", help="open the web interface in a desktop window")
+
+    sw = sub.add_parser("sweep", help="run a grid of configs, each several times")
+    sw.add_argument("--config", required=True, type=Path)
+    sw.add_argument("--plan", action="store_true", help="show what would run and stop")
+    sw.add_argument("--workers", type=int, help="runs at the same time (default from the file)")
+    sw.add_argument("--out", type=Path, help="output folder (default from the file)")
+
+    ag = sub.add_parser("aggregate", help="combine results files into attack success rates")
+    ag.add_argument("paths", nargs="+", type=Path, help="results.json files, or sweep folders")
+    ag.add_argument("--out", type=Path, help="where to write asr.csv and asr.md")
     return p
 
 
@@ -180,6 +193,61 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     return 0
 
 
+def _cmd_sweep(args: argparse.Namespace) -> int:
+    try:
+        sweep, base = load_sweep(args.config)
+        if args.workers:
+            sweep.workers = args.workers
+        if args.out:
+            sweep.out = args.out
+        cells = expand(sweep, base)
+    except (ValueError, OSError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    plan = make_plan(sweep, base, cells)
+    print(format_plan(plan, cells))
+    if args.plan:
+        return 0
+
+    def progress(run_id: str, status: str, result: SweepResult, total: int) -> None:
+        count = len(result.done) + len(result.failed)
+        note = f" ({result.failed[run_id]})" if run_id in result.failed else ""
+        print(f"  [{count}/{total}] {run_id}: {status}{note}")
+
+    try:
+        result = run_sweep(sweep, base, cells, on_progress=progress)
+    except SweepMismatch as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    print(f"{len(result.done)} run(s) finished, {result.skipped} already done, "
+          f"{len(result.failed)} failed")
+    if result.cancelled:
+        print("stopped early: run the same command again to carry on")
+    try:
+        records, _ = merge_results(result_files([sweep.out]))
+    except ValueError:
+        return 130 if result.cancelled else 1       # nothing finished, so nothing to tabulate
+    csv_path, md_path = write_aggregate(records, sweep.out)
+    print(f"wrote {csv_path} and {md_path}")
+    return 130 if result.cancelled else (1 if result.failed else 0)
+
+
+def _cmd_aggregate(args: argparse.Namespace) -> int:
+    try:
+        records, skipped = merge_results(result_files(args.paths))
+    except (ValueError, OSError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    for run_id in skipped:
+        print(f"skipped {run_id}: already counted from an earlier file", file=sys.stderr)
+    out = args.out or (args.paths[0] if len(args.paths) == 1 and args.paths[0].is_dir()
+                       else Path("out/aggregate"))
+    csv_path, md_path = write_aggregate(records, out)
+    print(f"{len(records)} session(s) from {len(result_files(args.paths))} file(s)")
+    print(f"wrote {csv_path} and {md_path}")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     try:
         import uvicorn
@@ -227,6 +295,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_serve(args)
     if args.command == "app":
         return _cmd_app()
+    if args.command == "sweep":
+        return _cmd_sweep(args)
+    if args.command == "aggregate":
+        return _cmd_aggregate(args)
     return _cmd_list(args)
 
 

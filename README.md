@@ -171,6 +171,45 @@ A jailbreak is a conversation, not a single message, so the attacker is built to
 
 **Attack success rate.** The report also carries an `asr` section (and the Markdown an "Attack success rate" table), and the CLI writes `asr.csv`. A rate is shown as counts first: `3/19 (15.8%)`, with a Wilson 95% interval, because one run is a small sample and a model is not deterministic. The unit is an attack turn. The headline is the **proven** rate, a success a deterministic signal backs. A success only the judge flagged is **judge only**, reported beside it and never added to it. Blocked turns count in the denominator, since the defence stopped them. A turn whose target call failed is an `error` and is left out of the denominator. Turns the attacker wrote itself are their own group, `model-authored`, apart from the corpus categories. One caveat: a session stops at its first success, so corpus vectors later in the order are tried less often, so compare `n` before comparing rates. The rates are grouped by config (target, guardrail mode, strategy, attacker model), by category, by vector and by objective.
 
+## Sweeps
+
+A single run is an anecdote. `cthulhu sweep` runs a grid of configurations, each several times, and turns the results into attack success rates.
+
+```
+cthulhu sweep --config examples/sweep.yaml --plan     # what it will cost, runs nothing
+cthulhu sweep --config examples/sweep.yaml
+cthulhu aggregate out/sweep                           # or any set of results.json files
+```
+
+A sweep file names a base config and a grid. Every combination of the axes is a **cell**, and every cell runs `repeats` times:
+
+```yaml
+base: sweep-base.yaml      # prompt, canary, judge, attacker settings
+repeats: 5
+workers: 1                 # one is right for a single local GPU
+grid:
+  target: [ollama:qwen3:8b, ollama:qwen3:14b]   # provider:model, or a full endpoint
+  guardrail: [none, input]                      # output and both come with the output filter
+  strategy: [corpus]                            # corpus | adaptive
+  objective: [leak_canary]
+  mode: [isolated, campaign]
+```
+
+An axis left out takes the base config's value. Cells that cannot run (isolated with an adaptive attacker, a guardrail mode that does not exist yet) are rejected with the reason before anything starts.
+
+**Two modes, because they answer different questions.**
+
+- `campaign` is one conversation per objective, the way `cthulhu attack` runs. Context builds up from turn to turn and the session stops at its first success. This is how a multi-turn break happens, but it makes a vector's own rate hard to read: a vector later in the corpus is tried less often, and what came before it shapes the reply. For a corpus campaign the figure to read is the session rate.
+- `isolated` gives every corpus vector its own fresh one-turn session, so each vector is tried the same number of times with no context from the others. This is the clean per-vector rate. It needs the corpus strategy, since an adaptive attacker has no vectors.
+
+Running both on the same target and guardrail shows whether a vector breaks on its own or only after earlier turns have shaped the conversation. A corpus campaign should have `max_turns` at least the corpus size, or the vectors past that turn are never tried. The plan warns when it is not.
+
+**What a run is, and what is kept.** One run is one cell on one repeat. Each finished run is written to `runs/<cell>-r003.results.json` the moment it ends, through a temporary file and a rename, so a file is either whole or missing. Run the same command again and only the runs that are missing are done, which also covers adding more `repeats` later. A run that fails or is cancelled is not written and is tried again next time. `sweep.json` holds the expanded plan and a fingerprint of what decides the results (config, prompt, corpus, grid); a folder made from a different plan is refused. Ctrl+C cancels the running runs and keeps everything finished.
+
+**Sampling is not pinned.** A run uses the model's own default sampling, so the repeats measure how much results vary. An endpoint can set `temperature` in the config, and it is passed through to Ollama and OpenAI-compatible servers. `sweep.json` records the sampling per cell, and an unset value is written as "endpoint/model default, unspecified", with the seed as "not set", so the setting is on record whichever way it went.
+
+**Aggregating.** `cthulhu aggregate` reads any mix of sweep folders and `results.json` files (each file once: a run id that turns up in a second file is skipped, so a file given twice is not counted twice) and writes `asr.csv` and `asr.md`. A sweep does this for its own folder when it ends. Rates are grouped by config, which is target, guardrail mode, strategy, attacker model and mode, so isolated and campaign rows are never mixed.
+
 ## Web interface
 
 `cthulhu serve` starts a local web UI on 127.0.0.1 that wraps the same engine, so a run can be configured and watched in a browser instead of the terminal. It has three steps:
@@ -231,11 +270,16 @@ cthulhu/
   guardrail.py         input filter and prompt hardening
   jsonx.py             defensive JSON for messy model output
   report.py            JSON and Markdown, single-turn and multi-turn
-  cli.py               run, attack, list-attacks, serve, app
+  results.py           flat per-turn result records read from a report
+  export.py            results.json and results.csv
+  asr.py               attack success rate, merging results files, asr.csv and asr.md
+  campaign.py          builds a run from a config: campaign and isolated modes
+  sweep.py             sweep config, grid expansion, resumable runner
+  cli.py               run, attack, sweep, aggregate, list-attacks, serve, app
   desktop.py           the desktop window around the web interface
   web/                 FastAPI backend (127.0.0.1 only), SSE, and the static UI
 tools/                 build_exe.ps1 and the packaged entry point
-examples/              config.yaml and target_system_prompt.txt
+examples/              config.yaml, sweep.yaml, sweep-base.yaml and target_system_prompt.txt
 samples/               mock and live reports, and a multi-turn report in multiturn/
 tests/                 the offline pytest suite
 ```

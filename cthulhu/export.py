@@ -28,7 +28,7 @@ CSV_COLUMNS = SESSION_COLUMNS + TURN_COLUMNS
 _FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
 
 
-def _cell(value: object) -> object:
+def safe_cell(value: object) -> object:
     """Make a value safe for a spreadsheet: a leading formula character is escaped."""
     if isinstance(value, bool):
         return str(value).lower()
@@ -51,7 +51,7 @@ def to_csv(records: list[SessionRecord]) -> str:
         session = {name: getattr(rec, name) for name in SESSION_COLUMNS}
         for turn in rec.turns:
             row = {**session, **{name: getattr(turn, name) for name in TURN_COLUMNS}}
-            writer.writerow({k: _cell(v) for k, v in row.items()})
+            writer.writerow({k: safe_cell(v) for k, v in row.items()})
     return buf.getvalue()
 
 

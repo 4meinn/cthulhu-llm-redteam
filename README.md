@@ -171,6 +171,28 @@ A jailbreak is a conversation, not a single message, so the attacker is built to
 
 **Attack success rate.** The report also carries an `asr` section (and the Markdown an "Attack success rate" table), and the CLI writes `asr.csv`. A rate is shown as counts first: `3/19 (15.8%)`, with a Wilson 95% interval, because one run is a small sample and a model is not deterministic. The unit is an attack turn. The headline is the **proven** rate, a success a deterministic signal backs. A success only the judge flagged is **judge only**, reported beside it and never added to it. Blocked turns count in the denominator, since the defence stopped them. A turn whose target call failed is an `error` and is left out of the denominator. Turns the attacker wrote itself are their own group, `model-authored`, apart from the corpus categories. One caveat: a session stops at its first success, so corpus vectors later in the order are tried less often, so compare `n` before comparing rates. The rates are grouped by config (target, guardrail mode, strategy, attacker model), by category, by vector and by objective.
 
+## The output stage
+
+The guardrail has two stages that can be switched on and off on their own, which gives four modes: `none`, `input`, `output` and `both`.
+
+- **`input`** is the pattern filter and the prompt hardening together, the same bundle as before. So the difference between `none` and `input` includes the hardening, it is not a measurement of the pattern filter alone.
+- **`output`** is the output stage on its own, with no input filter and no hardening, so it is measured in isolation.
+- **`both`** is the two together.
+
+The output stage runs after the target has answered and before anything else sees the reply. It looks for the secrets the defender registered: the canary, and any others listed under `output_secrets` in the config. It uses the same check the scorer uses (verbatim, altered spacing or separators, a distinctive fragment such as the last part of the code), so the filter and the measurement agree on what a leak is. A reply that holds one has the span replaced with `[removed by guardrail]`. The result is checked again, and if anything still counts as a leak the whole reply is withheld, so a gap between finding a span and removing it fails closed. Redacting rather than refusing keeps the application answering: a long, useful reply is not thrown away for one leaked line.
+
+What the application returns is what counts. The cleaned reply is what the scorer and the judge see, what the conversation remembers and what the report shows, so the objective is not met by a leak the filter removed. In `on_suspicion` judge mode a reply the filter changed counts as suspicious, so the judge checks the cleaned text. Use `judge_mode: per_turn` for output runs.
+
+**How it is recorded.** A turn the filter changed has the outcome `filtered`, the counterpart of `blocked` but after the model has answered. It counts as defended. A separate flag, `raw_leak`, says the model's own reply held a leak before the filter, and the two together mean the filter caught a real leak. The ASR and matrix tables show this as `caught`, and `unfiltered_rate` is the rate the same turns would have had without the stage.
+
+**Read these numbers with care.** Because the filter and the scorer use the same check, a proven rate near zero under `output` or `both` is expected by construction. It is not a finding. What carries information is how many leaks were caught, and what the judge finds in the cleaned text: a leak the filter cannot recognise, such as a paraphrase or a translation, shows up there if it shows up at all. The stage knows the secrets it is told about and nothing else. That is a realistic setup, since a defender can register their own secrets, but it does not find a leak it has no pattern for.
+
+```
+cthulhu attack --config examples/config.yaml --guardrail-mode output   # or input, both
+```
+
+The same choice is `guardrail: true` with `guardrail_mode: output` in the config, and `guardrail: [none, input, output, both]` as an axis in a sweep. The web API takes `guardrail_mode` in the run body, the web page's checkbox still means `input`. The single-turn `cthulhu run` has no output stage.
+
 ## Sweeps
 
 A single run is an anecdote. `cthulhu sweep` runs a grid of configurations, each several times, and turns the results into attack success rates.
@@ -189,13 +211,13 @@ repeats: 5
 workers: 1                 # one is right for a single local GPU
 grid:
   target: [ollama:qwen3:8b, ollama:qwen3:14b]   # provider:model, or a full endpoint
-  guardrail: [none, input]                      # output and both come with the output filter
+  guardrail: [none, input, output, both]        # input is the filter plus hardening
   strategy: [corpus]                            # corpus | adaptive
   objective: [leak_canary]
   mode: [isolated, campaign]
 ```
 
-An axis left out takes the base config's value. Cells that cannot run (isolated with an adaptive attacker, a guardrail mode that does not exist yet) are rejected with the reason before anything starts.
+An axis left out takes the base config's value. Cells that cannot run (isolated with an adaptive attacker) are rejected with the reason before anything starts.
 
 **Two modes, because they answer different questions.**
 
@@ -212,7 +234,7 @@ Running both on the same target and guardrail shows whether a vector breaks on i
 
 **Comparison matrices.** `matrix.md` and `matrix.csv` lay the same counts out for comparison. Nothing is recomputed, a matrix cell is the ASR table's cell. There are four views.
 
-- **Defence matrix** (isolated). Per target, categories against the guardrail mode (`none`, `input`, and `output` and `both` once they exist, a mode with no data gets no column). A second table does the same per vector, hiding vectors where nothing leaked or was blocked, `cthulhu aggregate --all` keeps them. The per-vector rows matter: a category row hid that one system-prompt-leak vector walked straight through the input filter while its neighbours were blocked.
+- **Defence matrix** (isolated). Per target, categories against the guardrail mode (`none`, `input`, `output` and `both`, a mode with no data gets no column). A second table does the same per vector, hiding vectors where nothing leaked or was blocked, `cthulhu aggregate --all` keeps them. The per-vector rows matter: a category row hid that one system-prompt-leak vector walked straight through the input filter while its neighbours were blocked.
 - **Context effect.** For a target and guardrail, each vector alone (isolated) beside the same vector inside a campaign, with the turns the campaign won at. `only in context` marks a vector that won in a campaign and never on its own, `not reached` marks one the campaign never got to, which is not the same as 0.
 - **Session matrix.** Attacker (strategy and attacker model) against defender (target and guardrail): the share of campaign sessions that broke and at which turns. It stays sparse until adaptive sweeps are run, since a corpus attacker is one row.
 
@@ -275,7 +297,7 @@ cthulhu/
   conversation.py      multi-turn session engine
   runner.py            single-turn runner, applies the guardrail, retries
   scoring/             deterministic.py, judge.py, combine.py
-  guardrail.py         input filter and prompt hardening
+  guardrail.py         input filter and hardening, the output filter, the four modes
   jsonx.py             defensive JSON for messy model output
   report.py            JSON and Markdown, single-turn and multi-turn
   results.py           flat per-turn result records read from a report

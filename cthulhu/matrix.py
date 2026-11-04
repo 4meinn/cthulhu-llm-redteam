@@ -122,6 +122,7 @@ class ContextRow:
     isolated: AsrRow | None
     campaign: AsrRow | None
     win_turns: list[int]
+    caught_turns: list[int]          # turns the output filter caught a real leak at
     note: str                        # "only in context", "not reached in campaign" or ""
 
 
@@ -148,12 +149,14 @@ def context_tables(records: list[SessionRecord], show_all: bool = False) -> list
     camp_rows = {(r.key["target"], r.key["guardrail"], r.key["vector"]): r
                  for r in aggregate(camp, by=("config", "vector"))}
     wins: dict[tuple[str, str, str], list[int]] = {}
+    catches: dict[tuple[str, str, str], list[int]] = {}
     for rec in camp:
-        if rec.needs_review:
-            continue
         for turn in rec.turns:
-            if turn.outcome == "objective_met":
-                wins.setdefault((rec.target, rec.guardrail, turn.vector), []).append(turn.turn)
+            key = (rec.target, rec.guardrail, turn.vector)
+            if turn.outcome == "objective_met" and not rec.needs_review:
+                wins.setdefault(key, []).append(turn.turn)
+            elif turn.outcome == "filtered" and turn.raw_leak:
+                catches.setdefault(key, []).append(turn.turn)
 
     tables = []
     defenders = sorted({(t, g) for t, g, _ in iso_rows} & {(t, g) for t, g, _ in camp_rows},
@@ -165,9 +168,10 @@ def context_tables(records: list[SessionRecord], show_all: bool = False) -> list
         for vector in vectors:
             i, c = iso_rows.get((target, guardrail, vector)), camp_rows.get((target, guardrail, vector))
             note = _context_note(i, c)
-            row = ContextRow(vector, i, c, sorted(wins.get((target, guardrail, vector), [])), note)
-            shown = ((i is not None and (i.proven or i.judge_only))
-                     or (c is not None and (c.proven or c.judge_only)))
+            key = (target, guardrail, vector)
+            row = ContextRow(vector, i, c, sorted(wins.get(key, [])), sorted(catches.get(key, [])), note)
+            shown = any(cell is not None and (cell.proven or cell.judge_only or cell.filtered)
+                        for cell in (i, c))
             if show_all or shown:
                 rows.append(row)
         if rows:

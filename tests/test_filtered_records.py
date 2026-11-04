@@ -125,3 +125,18 @@ def test_a_vector_where_the_filter_acted_is_not_hidden_from_the_vector_view():
     recs = [_rec([("held", False)], guardrail="none")] * 3 + [_rec([("filtered", True)], guardrail="output")] * 3
     (table,) = defence_tables(recs, "vector")
     assert [r.label for r in table.rows] == ["v1 (c1)"]
+
+
+def test_the_context_view_shows_a_vector_the_output_filter_caught_in_a_campaign():
+    caught_in_campaign = _rec([("held", False)] * 18 + [("filtered", True)], guardrail="both", mode="campaign")
+    caught_in_campaign.turns[-1].vector = "jb-002"
+    recs = [_rec([("held", False)], guardrail="both")] * 3 + [caught_in_campaign]
+    recs[0].turns[0].vector = "jb-002"
+    from cthulhu.matrix import context_tables
+
+    (table,) = context_tables(recs)
+    jb = next(r for r in table.rows if r.vector == "jb-002")
+    assert jb.campaign.caught == 1 and jb.campaign.proven == 0
+    assert jb.caught_turns == [19] and jb.win_turns == []
+    md = matrix_markdown(build_matrices(recs))
+    assert "| jb-002 |" in md and "0, caught at turn 19" in md

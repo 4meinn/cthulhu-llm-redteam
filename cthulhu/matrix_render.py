@@ -104,6 +104,8 @@ def _context_cell(row: ContextRow) -> tuple[str, str]:
     won = str(camp.proven)
     if row.win_turns:
         won += " (turn " + ", ".join(str(t) for t in row.win_turns) + ")"
+    if row.caught_turns:
+        won += ", caught at turn " + ", ".join(str(t) for t in row.caught_turns)
     return tried, won
 
 
@@ -178,7 +180,7 @@ CSV_COLUMNS = (
     "view", "target", "mode", "strategy", "attacker_model", "guardrail", "row", "n", "proven",
     "proven_rate", "ci_low", "ci_high", "judge_only", "blocked", "filtered", "caught", "error",
     "unfiltered_rate", "low_n",
-    "delta_points", "intervals", "break_turns", "note",
+    "delta_points", "intervals", "break_turns", "caught_turns", "note",
 )
 
 
@@ -217,6 +219,7 @@ def matrix_rows(matrices: Matrices) -> list[dict]:
                             "strategy": "corpus", "guardrail": table.guardrail, "row": row.vector,
                             **_asr_fields(cell),
                             "break_turns": " ".join(str(t) for t in row.win_turns) if mode == "campaign" else None,
+                            "caught_turns": " ".join(str(t) for t in row.caught_turns) if mode == "campaign" else None,
                             "note": row.note if mode == "campaign" else None})
     if matrices.session:
         table = matrices.session

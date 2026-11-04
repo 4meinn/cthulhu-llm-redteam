@@ -29,5 +29,6 @@ def build_client(
             return MockAttackerModel(canary=canary)
         return MockClient(canary=canary)
     if cfg.provider == "ollama":
-        return OllamaClient(cfg.base_url, cfg.model, cfg.timeout)
-    return OpenAICompatClient(cfg.base_url, cfg.model, cfg.api_key, cfg.timeout)
+        return OllamaClient(cfg.base_url, cfg.model, cfg.timeout, temperature=cfg.temperature)
+    return OpenAICompatClient(cfg.base_url, cfg.model, cfg.api_key, cfg.timeout,
+                              temperature=cfg.temperature)

@@ -168,3 +168,35 @@ def test_cli_attack_writes_results_next_to_the_report(tmp_path):
     asr = (out / "asr.csv").read_text(encoding="utf-8").splitlines()
     assert asr[0].startswith("level,target,guardrail") and any(r.startswith("config,") for r in asr)
     assert json.loads((out / "report.json").read_text(encoding="utf-8"))["asr"]["config"]
+
+
+def _capture(client_cls, **kw):
+    sent = {}
+
+    def handler(request):
+        sent.update(json.loads(request.content))
+        body = ({"message": {"content": "hi"}} if client_cls is OllamaClient
+                else {"choices": [{"message": {"content": "hi"}}]})
+        return httpx.Response(200, json=body)
+
+    client = client_cls("http://x", "m", transport=httpx.MockTransport(handler), **kw)
+    client.chat([{"role": "user", "content": "yo"}])
+    return sent
+
+
+def test_temperature_is_sent_only_when_set():
+    from cthulhu.clients import OpenAICompatClient
+
+    assert "options" not in _capture(OllamaClient)
+    assert _capture(OllamaClient, temperature=0.3)["options"] == {"temperature": 0.3}
+    assert "temperature" not in _capture(OpenAICompatClient)
+    assert _capture(OpenAICompatClient, temperature=0.7)["temperature"] == 0.7
+
+
+def test_endpoint_temperature_reaches_the_client():
+    from cthulhu.clients import build_client
+    from cthulhu.config import EndpointConfig
+
+    cfg = EndpointConfig(provider="ollama", model="m", temperature=0.2)
+    assert build_client(cfg).temperature == 0.2
+    assert build_client(EndpointConfig(provider="ollama", model="m")).temperature is None

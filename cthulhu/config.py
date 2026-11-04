@@ -20,6 +20,7 @@ class EndpointConfig(BaseModel):
     model: str = "qwen3:8b"
     api_key: str | None = None
     timeout: float = 120.0
+    temperature: float | None = Field(default=None, ge=0, le=2)   # None leaves the model default
 
     @field_validator("model")
     @classmethod

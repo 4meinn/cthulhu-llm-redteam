@@ -104,3 +104,25 @@ def test_cancel_all_leaves_finished_runs_alone():
     reply = client.post("/runs/cancel-all").json()
     assert isinstance(reply["cancelled"], int)
     assert client.get(f"/runs/{finished}").json()["status"] == "done"
+
+
+def test_results_endpoints_serve_json_and_csv():
+    rid = client.post("/runs", json=_body()).json()["run_id"]
+    _drain_events(rid)
+
+    js = client.get(f"/runs/{rid}/results.json")
+    assert js.status_code == 200 and js.headers["content-type"].startswith("application/json")
+    sessions = js.json()["sessions"]
+    assert [s["phase"] for s in sessions] == ["baseline", "guarded"]
+    assert all(s["run_id"] == rid for s in sessions)
+
+    cs = client.get(f"/runs/{rid}/results.csv")
+    assert cs.status_code == 200 and cs.headers["content-type"].startswith("text/csv")
+    lines = cs.text.strip().splitlines()
+    assert lines[0].startswith("run_id,phase,target") and len(lines) == 1 + sum(
+        len(s["turns"]) for s in sessions)
+
+
+def test_results_endpoints_need_a_known_run_and_a_ready_report():
+    assert client.get("/runs/nope/results.json").status_code == 404
+    assert client.get("/runs/nope/results.csv").status_code == 404

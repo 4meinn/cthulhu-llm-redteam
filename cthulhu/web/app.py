@@ -16,7 +16,9 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from fastapi.staticfiles import StaticFiles
 
 from ..config import RunConfig
+from ..export import to_csv, to_json
 from ..report import session_report_to_markdown
+from ..results import records_from_report
 from .manager import RunManager
 
 ALLOWED_HOSTS = {"localhost", "127.0.0.1"}
@@ -122,3 +124,21 @@ def run_report_markdown(run_id: str):
     if run.report is None:
         raise HTTPException(status_code=409, detail="report not ready")
     return session_report_to_markdown(run.report)
+
+
+@app.get("/runs/{run_id}/results.json", response_class=PlainTextResponse)
+def run_results_json(run_id: str):
+    run = _require(run_id)
+    if run.report is None:
+        raise HTTPException(status_code=409, detail="report not ready")
+    return PlainTextResponse(to_json(records_from_report(run.report, run.id)),
+                             media_type="application/json")
+
+
+@app.get("/runs/{run_id}/results.csv", response_class=PlainTextResponse)
+def run_results_csv(run_id: str):
+    run = _require(run_id)
+    if run.report is None:
+        raise HTTPException(status_code=409, detail="report not ready")
+    return PlainTextResponse(to_csv(records_from_report(run.report, run.id)),
+                             media_type="text/csv; charset=utf-8")

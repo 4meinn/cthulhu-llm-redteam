@@ -38,6 +38,11 @@ def test_outcome_precedence():
     assert turn_outcome({"blocked": False, "violated": True, "leaked": True}) == "objective_met"
     assert turn_outcome({"blocked": False, "violated": False, "leaked": True}) == "leaked"
     assert turn_outcome({"blocked": False, "violated": False, "leaked": False}) == "held"
+    assert turn_outcome({"filtered": True}) == "filtered"
+    assert turn_outcome({"filtered": True, "leaked": True}) == "leaked"
+    assert turn_outcome({"filtered": True, "violated": True}) == "objective_met"
+    assert turn_outcome({"filtered": True, "error": True}) == "error"
+    assert turn_outcome({"filtered": True, "blocked": True}) == "blocked"
 
 
 def test_records_carry_run_settings_and_phase():
@@ -80,7 +85,7 @@ def test_json_has_nested_turns_and_the_tactic():
     first = data["sessions"][0]
     assert first["run_id"] == "r1" and first["turns"]
     assert set(first["turns"][0]) == {"turn", "category", "vector", "tactic", "outcome",
-                                      "deterministic_signal", "judge_verdict"}
+                                      "deterministic_signal", "judge_verdict", "raw_leak"}
 
 
 def test_csv_is_one_row_per_turn_and_leaves_the_tactic_out():

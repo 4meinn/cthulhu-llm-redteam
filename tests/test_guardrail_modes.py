@@ -110,7 +110,9 @@ def test_the_cli_takes_a_guardrail_mode_and_the_results_carry_it(tmp_path, capsy
     assert code == 0 and "guardrail output" in capsys.readouterr().out
     sessions = json.loads((out / "results.json").read_text(encoding="utf-8"))["sessions"]
     assert [s["guardrail"] for s in sessions] == ["none", "output"]
-    assert sessions[1]["turns"][0]["outcome"] in ("filtered", "held", "blocked", "objective_met", "leaked")
+    guarded = [t for t in sessions[1]["turns"]]
+    assert any(t["outcome"] == "filtered" and t["raw_leak"] for t in guarded)
+    assert not any(t["outcome"] == "objective_met" for t in guarded)
     report = json.loads((out / "report.json").read_text(encoding="utf-8"))
     assert report["meta"]["guardrail_mode"] == "output"
 

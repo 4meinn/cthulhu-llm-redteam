@@ -74,7 +74,8 @@ class DefenceTable:
 
 
 def _interesting(row: MatrixRow) -> bool:
-    return any(c is not None and (c.proven or c.judge_only or c.blocked) for c in row.cells.values())
+    return any(c is not None and (c.proven or c.judge_only or c.blocked or c.filtered)
+               for c in row.cells.values())
 
 
 def defence_tables(records: list[SessionRecord], view: str = "category",

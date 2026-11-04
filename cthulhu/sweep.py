@@ -31,13 +31,14 @@ from . import __version__
 from . import campaign
 from .campaign import PhaseEvent
 from .config import EndpointConfig, RunConfig, load_config
+from .guardrail import MODES
 from .corpus import load_corpus
 from .export import to_json
 from .report import build_phase_report, run_meta
 from .results import records_from_report
 from .web.manager import RunManager
 
-GUARDRAILS = ("none", "input")
+GUARDRAILS = MODES
 SAMPLING_DEFAULT = "endpoint/model default, unspecified"
 PROVIDERS = ("mock", "ollama", "openai")
 
@@ -55,8 +56,6 @@ class Grid(BaseModel):
     @classmethod
     def _known_guardrail(cls, values: list[str]) -> list[str]:
         for value in values:
-            if value in ("output", "both"):
-                raise ValueError(f"guardrail '{value}' is not available yet, use none or input")
             if value not in GUARDRAILS:
                 raise ValueError(f"guardrail must be one of {', '.join(GUARDRAILS)}, got '{value}'")
         return values
@@ -86,7 +85,9 @@ class Cell:
         """The config for one run of this cell, copied from the base."""
         cfg = base.model_copy(deep=True)
         cfg.target = self.target.model_copy(deep=True)
-        cfg.guardrail = self.guardrail == "input"
+        cfg.guardrail = self.guardrail != "none"
+        if cfg.guardrail:
+            cfg.guardrail_mode = self.guardrail
         cfg.attacker.strategy = self.strategy
         cfg.attacker.objectives = [self.objective]
         cfg.label = label or self.id
@@ -126,7 +127,7 @@ def expand(sweep: SweepConfig, base: RunConfig) -> list[Cell]:
         raise ValueError("the base config has no 'attacker' section")
     grid = sweep.grid
     targets = [parse_target(t, base.target) for t in grid.target] or [base.target]
-    guardrails = grid.guardrail or ["input" if base.guardrail else "none"]
+    guardrails = grid.guardrail or [base.guardrail_mode if base.guardrail else "none"]
     strategies = grid.strategy or [base.attacker.strategy]
     objectives = grid.objective or list(base.attacker.objectives)
     modes = grid.mode or ["campaign"]
@@ -320,11 +321,11 @@ def pending_runs(cells: list[Cell], repeats: int, runs_dir: Path) -> tuple[list[
 
 
 def _cell_runner(cell: Cell) -> Callable:
-    phase = "guarded" if cell.guardrail == "input" else "baseline"
+    phase = "baseline" if cell.guardrail == "none" else "guarded"
 
     def runner(cfg: RunConfig, on_event: PhaseEvent, should_stop: Callable[[], bool]) -> dict:
         sessions = campaign.run_phase(
-            cfg, guardrail=cell.guardrail == "input", mode=cell.mode,
+            cfg, guardrail=cell.guardrail, mode=cell.mode,
             on_event=lambda kind, data: on_event(phase, kind, data), should_stop=should_stop)
         return build_phase_report(sessions, phase, {**run_meta(cfg), "mode": cell.mode})
 

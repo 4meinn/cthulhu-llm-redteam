@@ -21,7 +21,7 @@ from .clients import LLMClient, build_client
 from .config import RunConfig
 from .conversation import Event, Session, run_campaign, run_session
 from .corpus import load_corpus
-from .guardrail import Guardrail
+from .guardrail import Guardrail, build_guardrail
 
 # (phase, kind, data): phase is "baseline" or "guarded".
 PhaseEvent = Callable[[str, str, dict], None]
@@ -87,11 +87,20 @@ def _run_isolated(cfg: RunConfig, ctx: _Context, guardrail: Guardrail | None,
     return sessions
 
 
-def _run_phase(cfg: RunConfig, ctx: _Context, *, guardrail: bool, mode: str,
+def _guardrail_mode(cfg: RunConfig, guardrail: str | bool) -> str:
+    """True means the config's own guarded mode, False none, a string is taken as it is."""
+    if guardrail is True:
+        return cfg.guardrail_mode
+    if guardrail is False:
+        return "none"
+    return guardrail
+
+
+def _run_phase(cfg: RunConfig, ctx: _Context, *, guardrail: str | bool, mode: str,
                on_event: Event | None) -> list[Session]:
     if mode not in MODES:
         raise ValueError(f"mode must be one of {', '.join(MODES)}")
-    guard = Guardrail() if guardrail else None
+    guard = build_guardrail(_guardrail_mode(cfg, guardrail), ctx.canary, cfg.output_secrets)
     if mode == "isolated":
         return _run_isolated(cfg, ctx, guard, on_event)
     return run_campaign(build_attacker(cfg, ctx.canary), ctx.target, ctx.objectives,
@@ -101,12 +110,12 @@ def _run_phase(cfg: RunConfig, ctx: _Context, *, guardrail: bool, mode: str,
 def run_phase(
     cfg: RunConfig,
     *,
-    guardrail: bool,
+    guardrail: str | bool,
     mode: str = "campaign",
     on_event: Event | None = None,
     should_stop: Callable[[], bool] | None = None,
 ) -> list[Session]:
-    """Run one phase on its own: with or without the guardrail, in the given mode."""
+    """Run one phase on its own: a guardrail mode (none, input, output, both), in the given mode."""
     return _run_phase(cfg, _context(cfg, should_stop), guardrail=guardrail, mode=mode,
                       on_event=on_event)
 

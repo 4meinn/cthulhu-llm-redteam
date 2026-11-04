@@ -247,6 +247,7 @@ def run_meta(cfg: RunConfig) -> dict:
         "scoring": cfg.scoring,
         "judge_mode": attacker.judge_mode if attacker else None,
         "guardrail": cfg.guardrail,
+        "guardrail_mode": cfg.guardrail_mode,
         "strategy": attacker.strategy if attacker else None,
         "attacker_model": f"{endpoint.provider}:{endpoint.model}" if endpoint else None,
         "mode": "campaign",

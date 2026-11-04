@@ -49,6 +49,10 @@ def _parser() -> argparse.ArgumentParser:
         "--guardrail", action=argparse.BooleanOptionalAction, default=None,
         help="override the config's guardrail setting",
     )
+    atk.add_argument(
+        "--guardrail-mode", choices=("input", "output", "both"), default=None,
+        help="which guardrail stages the guarded phase uses (turns the guardrail on)",
+    )
     atk.add_argument("--out", type=Path, help="output directory")
 
     sv = sub.add_parser("serve", help="run the local web backend on 127.0.0.1")
@@ -162,6 +166,8 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
         return 2
     if args.guardrail is not None:
         cfg.guardrail = args.guardrail
+    if args.guardrail_mode:
+        cfg.guardrail, cfg.guardrail_mode = True, args.guardrail_mode
     if args.out:
         cfg.output_dir = args.out
     if args.objective:
@@ -174,7 +180,7 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     print(paint(BANNER, "primary", color))
     print(f"{cfg.attacker.strategy} attacker, {len(cfg.attacker.objectives)} objective(s), "
           f"up to {cfg.attacker.max_turns} turns, judge={cfg.attacker.judge_mode}, "
-          f"guardrail {'on' if cfg.guardrail else 'off'}")
+          f"guardrail {cfg.guardrail_mode if cfg.guardrail else 'off'}")
 
     try:
         baseline, guarded = run_attack_run(cfg, on_event=_attack_printer(color))

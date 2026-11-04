@@ -134,7 +134,7 @@ def test_a_failed_run_is_reported_not_written_and_retried_next_time(tmp_path, mo
     real = campaign.run_phase
 
     def flaky(cfg, **kw):
-        if kw["guardrail"]:
+        if kw["guardrail"] != "none":
             raise RuntimeError("target unreachable")
         return real(cfg, **kw)
 

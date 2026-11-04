@@ -56,6 +56,9 @@ class RunConfig(BaseModel):
     categories: list[str] = Field(default_factory=list)  # empty means all
     scoring: Literal["any", "all", "deterministic", "judge"] = "any"
     guardrail: bool = False
+    # which stages the guarded phase uses: input (filter and hardening), output, or both
+    guardrail_mode: Literal["input", "output", "both"] = "input"
+    output_secrets: list[str] = Field(default_factory=list)   # secrets the output stage guards besides the canary
     iterations: int = Field(default=1, ge=1)
     attacker: AttackerConfig | None = None
     label: str | None = None                 # a display name for the run, used by the web board

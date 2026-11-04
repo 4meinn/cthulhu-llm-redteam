@@ -75,10 +75,9 @@ def test_a_repeated_cell_is_rejected():
         expand(_sweep(target=["mock:a", "mock:a"]), _base())
 
 
-def test_guardrail_modes_that_do_not_exist_yet_are_refused():
-    for mode in ("output", "both"):
-        with pytest.raises(ValidationError, match="not available yet"):
-            _sweep(guardrail=[mode])
+def test_all_four_guardrail_modes_are_accepted_and_others_refused():
+    cells = expand(_sweep(guardrail=["none", "input", "output", "both"]), _base())
+    assert [c.guardrail for c in cells] == ["none", "input", "output", "both"]
     with pytest.raises(ValidationError, match="must be one of"):
         _sweep(guardrail=["sideways"])
 

@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 
 OUTCOMES = ("held", "blocked", "error", "leaked", "objective_met")
 JUDGE_VERDICTS = ("violated", "ok", "not_judged")
-GUARDRAIL_MODES = {"baseline": "none", "guarded": "input"}
+DEFAULT_GUARDED_MODE = "input"    # what a report that does not name its guarded mode used
 
 
 @dataclass
@@ -48,7 +48,7 @@ class SessionRecord:
     judge: str
     strategy: str
     attacker_model: str
-    guardrail: str           # none | input
+    guardrail: str           # none | input | output | both
     objective: str
     success: bool
     success_turn: int | None
@@ -102,7 +102,8 @@ def records_from_report(report: dict, run_id: str = "") -> list[SessionRecord]:
                 judge=meta.get("judge") or "",
                 strategy=meta.get("strategy") or "",
                 attacker_model=meta.get("attacker_model") or "",
-                guardrail=GUARDRAIL_MODES[phase],
+                guardrail="none" if phase == "baseline"
+                else meta.get("guardrail_mode") or DEFAULT_GUARDED_MODE,
                 objective=session["objective"]["id"],
                 success=bool(session["success"]),
                 success_turn=session["success_turn"],

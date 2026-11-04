@@ -248,6 +248,7 @@ def run_meta(cfg: RunConfig) -> dict:
         "guardrail": cfg.guardrail,
         "strategy": attacker.strategy if attacker else None,
         "attacker_model": f"{endpoint.provider}:{endpoint.model}" if endpoint else None,
+        "mode": "campaign",
     }
 
 
@@ -315,6 +316,17 @@ def build_session_report(
         "baseline": [_session_dict(s) for s in baseline],
         "guarded": None if guarded is None else [_session_dict(s) for s in guarded],
     }
+    report["asr"] = asr_section(records_from_report(report))
+    return report
+
+
+def build_phase_report(sessions: list[Session], phase: str, meta: dict) -> dict:
+    """A report for a single phase, as one sweep cell produces it."""
+    report = build_session_report(sessions, None, meta)
+    if phase == "baseline":
+        return report
+    report = {**report, "baseline": [], "guarded": report["baseline"],
+              "meta": {**report["meta"], "has_guarded": True}}
     report["asr"] = asr_section(records_from_report(report))
     return report
 

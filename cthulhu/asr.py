@@ -36,12 +36,13 @@ MODEL_AUTHORED = "model-authored"
 
 # What a grouping dimension is made of. "config" is always the same four fields.
 DIMENSIONS = {
-    "config": ("target", "guardrail", "strategy", "attacker_model"),
+    "config": ("target", "guardrail", "strategy", "attacker_model", "mode"),
     "category": ("category",),
     "vector": ("vector",),
     "objective": ("objective",),
 }
-KEY_COLUMNS = ("target", "guardrail", "strategy", "attacker_model", "category", "vector", "objective")
+KEY_COLUMNS = ("target", "guardrail", "strategy", "attacker_model", "mode",
+               "category", "vector", "objective")
 
 # The tables a report carries: each is a list of dimensions to group by.
 LEVELS = {
@@ -196,7 +197,9 @@ def _fraction(k: int, n: int) -> str:
 
 def _config_label(key: dict[str, str]) -> str:
     label = f"{key['target'] or '?'}, guardrail {key['guardrail']}, {key['strategy'] or '?'}"
-    return f"{label} ({key['attacker_model']})" if key.get("attacker_model") else label
+    if key.get("attacker_model"):
+        label += f" ({key['attacker_model']})"
+    return f"{label}, {key['mode']}"
 
 
 def _sessions_cell(row: dict) -> str:

@@ -12,7 +12,7 @@ from cthulhu.results import SessionRecord, TurnRecord
 
 
 def _rec(turns, *, run_id="r1", target="mock:t", guardrail="none", strategy="corpus",
-         attacker_model="", objective="leak_canary", needs_review=False):
+         attacker_model="", objective="leak_canary", needs_review=False, mode="campaign"):
     """A session from (outcome, category, vector) triples, a bare outcome is a corpus turn."""
     built = []
     for i, t in enumerate(turns, 1):
@@ -22,7 +22,7 @@ def _rec(turns, *, run_id="r1", target="mock:t", guardrail="none", strategy="cor
     return SessionRecord(run_id, "baseline" if guardrail == "none" else "guarded", target, "mock:j",
                          strategy, attacker_model, guardrail, objective, won,
                          next((t.turn for t in built if t.outcome == "objective_met"), None),
-                         "success" if won else "turn_budget", needs_review, built)
+                         "success" if won else "turn_budget", needs_review, built, mode)
 
 
 def _only(rows):
@@ -67,14 +67,15 @@ def test_model_authored_turns_are_their_own_group():
     assert by_cat[("adaptive", MODEL_AUTHORED)].n == 3
 
 
-def test_config_key_has_target_guardrail_strategy_and_attacker_model():
+def test_config_key_has_target_guardrail_strategy_attacker_model_and_mode():
     rows = aggregate([
         _rec(["held"]), _rec(["held"], guardrail="input"), _rec(["held"], target="mock:other"),
         _rec(["held"], strategy="adaptive", attacker_model="mock:a"),
         _rec(["held"], strategy="adaptive", attacker_model="mock:b"),
+        _rec(["held"], mode="isolated"),
     ])
-    assert len(rows) == 5
-    assert set(rows[0].key) == {"target", "guardrail", "strategy", "attacker_model"}
+    assert len(rows) == 6
+    assert set(rows[0].key) == {"target", "guardrail", "strategy", "attacker_model", "mode"}
 
 
 def test_runs_with_the_same_config_merge_and_n_adds_up():

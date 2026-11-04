@@ -19,7 +19,7 @@ from pathlib import Path
 from .results import SessionRecord, records_from_report
 
 SESSION_COLUMNS = (
-    "run_id", "phase", "target", "judge", "strategy", "attacker_model", "guardrail",
+    "run_id", "phase", "target", "judge", "strategy", "attacker_model", "guardrail", "mode",
     "objective", "success", "success_turn", "ended_reason", "needs_review",
 )
 TURN_COLUMNS = ("turn", "category", "vector", "outcome", "deterministic_signal", "judge_verdict")

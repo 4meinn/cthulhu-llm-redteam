@@ -55,6 +55,7 @@ class SessionRecord:
     ended_reason: str
     needs_review: bool
     turns: list[TurnRecord] = field(default_factory=list)
+    mode: str = "campaign"   # campaign: one conversation per objective; isolated: one fresh turn per vector
 
 
 def turn_outcome(turn: dict) -> str:
@@ -108,5 +109,6 @@ def records_from_report(report: dict, run_id: str = "") -> list[SessionRecord]:
                 ended_reason=session.get("ended_reason") or "",
                 needs_review=bool(session.get("needs_review")),
                 turns=[_turn_record(i, t) for i, t in enumerate(session["turns"], 1)],
+                mode=meta.get("mode") or "campaign",
             ))
     return out

@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Callable
 
+from .config import RunConfig
 from .conversation import Session
 from .corpus import partition as default_partition
 from .runner import AttackResult
@@ -233,6 +234,21 @@ def _success_source(session: Session) -> tuple[str | None, bool]:
     return "unknown", False
 
 
+def run_meta(cfg: RunConfig) -> dict:
+    """The run settings every multi-turn report carries, shared by the CLI and the web."""
+    attacker = cfg.attacker
+    endpoint = attacker.endpoint if attacker else None
+    return {
+        "target": f"{cfg.target.provider}:{cfg.target.model}",
+        "judge": f"{cfg.judge.provider}:{cfg.judge.model}" if cfg.judge else None,
+        "scoring": cfg.scoring,
+        "judge_mode": attacker.judge_mode if attacker else None,
+        "guardrail": cfg.guardrail,
+        "strategy": attacker.strategy if attacker else None,
+        "attacker_model": f"{endpoint.provider}:{endpoint.model}" if endpoint else None,
+    }
+
+
 def _session_dict(session: Session) -> dict:
     source, needs_review = _success_source(session)
     return {
@@ -250,6 +266,8 @@ def _session_dict(session: Session) -> dict:
         "turns": [
             {
                 "tactic": t.move.tactic,
+                "category": t.move.category,
+                "vector": t.move.vector,
                 # A blocked turn is never sent, so keep the attempted message for the report.
                 "sent": t.move.prompt if t.blocked else t.sent,
                 "response": t.response,
@@ -258,6 +276,7 @@ def _session_dict(session: Session) -> dict:
                 "note": t.note,
                 "violated": (v.violated if v else None),
                 "judged": (v is not None and v.judge is not None),
+                "judge_violated": (v.judge.violated if v is not None and v.judge is not None else None),
             }
             for t, v in zip(session.turns, session.verdicts, strict=True)
         ],

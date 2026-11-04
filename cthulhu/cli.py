@@ -12,7 +12,7 @@ from .clients import LLMClient, build_client
 from .config import load_config
 from .corpus import available_categories, load_corpus
 from .guardrail import Guardrail
-from .report import build_report, build_session_report, write_report, write_session_report
+from .report import build_report, build_session_report, run_meta, write_report, write_session_report
 from .runner import AttackResult, run_attacks
 from .scoring import CombinedVerdict, combine, judge, score
 from .ui import BANNER, color_enabled, paint
@@ -164,14 +164,7 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    meta = {
-        "target": f"{cfg.target.provider}:{cfg.target.model}",
-        "judge": f"{cfg.judge.provider}:{cfg.judge.model}" if cfg.judge else None,
-        "scoring": cfg.scoring,
-        "judge_mode": cfg.attacker.judge_mode,
-        "guardrail": cfg.guardrail,
-    }
-    report = build_session_report(baseline, guarded, meta)
+    report = build_session_report(baseline, guarded, run_meta(cfg))
     json_path, md_path = write_session_report(report, cfg.output_dir)
 
     met_b = sum(s.success for s in baseline)

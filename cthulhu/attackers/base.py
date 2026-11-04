@@ -55,6 +55,8 @@ class AttackMove:
     prompt: str
     tactic: str = ""
     done: bool = False          # the attacker concedes, no further ideas
+    category: str = ""          # corpus category, empty for a model-written move
+    vector: str = ""            # corpus attack id, empty for a model-written move
 
 
 @dataclass

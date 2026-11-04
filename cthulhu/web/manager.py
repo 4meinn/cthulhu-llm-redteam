@@ -14,7 +14,7 @@ from collections.abc import Iterator
 
 from .. import campaign
 from ..config import RunConfig
-from ..report import build_session_report
+from ..report import build_session_report, run_meta
 
 
 class Run:
@@ -41,16 +41,6 @@ class Run:
         self._new.set()
 
 
-def _meta(cfg: RunConfig) -> dict:
-    return {
-        "target": f"{cfg.target.provider}:{cfg.target.model}",
-        "judge": f"{cfg.judge.provider}:{cfg.judge.model}" if cfg.judge else None,
-        "scoring": cfg.scoring,
-        "judge_mode": cfg.attacker.judge_mode,
-        "guardrail": cfg.guardrail,
-    }
-
-
 def _plan(cfg: RunConfig) -> dict:
     """What a run will do, so the UI can show progress: sessions are objectives x phases."""
     return {
@@ -70,7 +60,7 @@ class RunManager:
             raise ValueError("config has no 'attacker' section")
         with self._lock:
             label = (cfg.label or "").strip() or f"{cfg.target.model} #{len(self._runs) + 1}"
-            run = Run(uuid.uuid4().hex, _meta(cfg), label, _plan(cfg))
+            run = Run(uuid.uuid4().hex, run_meta(cfg), label, _plan(cfg))
             self._runs[run.id] = run
         threading.Thread(target=self._worker, args=(run, cfg), daemon=True).start()
         return run.id

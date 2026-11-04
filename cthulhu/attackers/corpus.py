@@ -27,4 +27,5 @@ class CorpusAttacker(Attacker):
             return None
         attack = self._attacks[self._i]
         self._i += 1
-        return AttackMove(prompt=attack.render(), tactic=f"corpus:{attack.category}:{attack.id}")
+        return AttackMove(prompt=attack.render(), tactic=f"corpus:{attack.category}:{attack.id}",
+                          category=attack.category, vector=attack.id)

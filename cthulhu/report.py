@@ -13,9 +13,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Callable
 
+from .asr import asr_section, section_markdown
 from .config import RunConfig
 from .conversation import Session
 from .corpus import partition as default_partition
+from .results import records_from_report
 from .runner import AttackResult
 from .scoring import CombinedVerdict, agreement_rate
 
@@ -306,13 +308,15 @@ def build_session_report(
                 "deterministic": s.objective.deterministic,
                 "owasp": OBJECTIVE_OWASP.get(s.objective.id, "LLM01"),
             })
-    return {
+    report = {
         "meta": {**meta, "has_guarded": guarded is not None,
                  "judge_agreement": None if rate is None else round(rate, 3)},
         "objectives": objectives,
         "baseline": [_session_dict(s) for s in baseline],
         "guarded": None if guarded is None else [_session_dict(s) for s in guarded],
     }
+    report["asr"] = asr_section(records_from_report(report))
+    return report
 
 
 def _outcome(session: dict | None) -> str:
@@ -382,6 +386,10 @@ def session_report_to_markdown(report: dict) -> str:
         if guarded:
             row += f" {_outcome(g_by.get(obj['id']))} |"
         lines.append(row)
+
+    if report.get("asr"):
+        lines.append("")
+        lines += section_markdown(report["asr"])
 
     lines += ["", "## What broke and how", ""]
     phases = [("baseline", report["baseline"])] + ([("guarded", report["guarded"])] if guarded else [])

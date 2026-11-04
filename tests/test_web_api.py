@@ -46,6 +46,7 @@ def test_full_run_flow():
     assert status["status"] == "done" and status["summary"]["baseline"]["met"] == 1
 
     assert client.get(f"/runs/{rid}/report").json()["baseline"][0]["success"] is True
+    assert client.get(f"/runs/{rid}/report").json()["asr"]["config"][0]["n"] >= 1
     assert "Cthulhu multi-turn report" in client.get(f"/runs/{rid}/report.md").text
 
 

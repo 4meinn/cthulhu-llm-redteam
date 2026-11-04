@@ -12,6 +12,7 @@ from .clients import LLMClient, build_client
 from .config import load_config
 from .corpus import available_categories, load_corpus
 from .guardrail import Guardrail
+from .asr import write_asr
 from .export import write_results
 from .report import build_report, build_session_report, run_meta, write_report, write_session_report
 from .runner import AttackResult, run_attacks
@@ -174,7 +175,8 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
         summary += f", guarded: {sum(s.success for s in guarded)}/{len(guarded)} met"
     print(paint(summary, "crimson" if met_b else "teal", color))
     results_json, results_csv = write_results(report, cfg.output_dir)
-    print(f"wrote {json_path}, {md_path}, {results_json} and {results_csv}")
+    asr_csv = write_asr(report["asr"], cfg.output_dir)
+    print(f"wrote {json_path}, {md_path}, {results_json}, {results_csv} and {asr_csv}")
     return 0
 
 

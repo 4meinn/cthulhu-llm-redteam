@@ -89,3 +89,22 @@ def test_run_meta_names_the_attacker():
     })
     meta = run_meta(cfg)
     assert meta["strategy"] == "adaptive" and meta["attacker_model"] == "mock:atk"
+
+
+def test_report_carries_the_attack_success_rate():
+    report = build_session_report(_campaign(LEAK), _campaign(LEAK, guardrail=Guardrail()),
+                                  {"target": "mock", "strategy": "adaptive"})
+    configs = report["asr"]["config"]
+    assert [r["key"]["guardrail"] for r in configs] == ["input", "none"]
+    base = next(r for r in configs if r["key"]["guardrail"] == "none")
+    assert base["proven"] == 1 and base["n"] == 2 and base["proven_rate"] == 0.5
+    md = session_report_to_markdown(report)
+    assert "## Attack success rate" in md and "1/2 (50.0%)" in md
+    assert "model-authored" in md
+    assert md.index("## Attack success rate") < md.index("## What broke and how")
+
+
+def test_an_older_report_without_asr_still_renders():
+    report = build_session_report(_campaign(LEAK), None, {"target": "mock"})
+    del report["asr"]
+    assert "## Attack success rate" not in session_report_to_markdown(report)

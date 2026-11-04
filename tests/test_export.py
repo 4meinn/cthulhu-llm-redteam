@@ -3,7 +3,7 @@ import io
 import json
 
 from cthulhu.attackers import AdaptiveAttacker, AttackMove, CorpusAttacker, DEFAULT_OBJECTIVES, MockAttacker
-from cthulhu.clients import MockAttackerModel, MockClient, MockJudge
+from cthulhu.clients import LLMClient, LLMError, MockAttackerModel, MockClient, MockJudge
 from cthulhu.conversation import run_campaign
 from cthulhu.corpus import Attack
 from cthulhu.export import CSV_COLUMNS, to_csv, to_json
@@ -34,6 +34,7 @@ def _report(guarded=True):
 
 def test_outcome_precedence():
     assert turn_outcome({"blocked": True, "violated": None, "leaked": False}) == "blocked"
+    assert turn_outcome({"blocked": False, "error": True, "violated": True}) == "error"
     assert turn_outcome({"blocked": False, "violated": True, "leaked": True}) == "objective_met"
     assert turn_outcome({"blocked": False, "violated": False, "leaked": True}) == "leaked"
     assert turn_outcome({"blocked": False, "violated": False, "leaked": False}) == "held"
@@ -109,3 +110,20 @@ def test_free_text_tactic_with_formula_and_newline_stays_in_json_only():
     text = to_csv([rec])
     assert "calc" not in text and len(text.strip().splitlines()) == 1 + len(rec.turns)
     assert json.loads(to_json([rec]))["sessions"][0]["turns"][0]["tactic"].startswith("=")
+
+
+class _DownTarget(LLMClient):
+    def chat(self, messages):
+        raise LLMError("connection refused")
+
+
+def test_a_failed_target_call_is_an_error_not_a_held_turn(monkeypatch):
+    monkeypatch.setattr("cthulhu.conversation.time.sleep", lambda s: None)
+    sessions = run_campaign(MockAttacker([AttackMove(ASK, "direct")]), _DownTarget(), [LEAK],
+                            rules="code is " + CANARY, canary=CANARY, max_turns=3)
+    report = build_session_report(sessions, None, META)
+    assert report["baseline"][0]["turns"][0]["error"] is True
+    rec = records_from_report(report)[0]
+    assert rec.turns[0].outcome == "error" and not rec.success
+    ok = records_from_report(_report())[0]
+    assert all(t.outcome != "error" for t in ok.turns)

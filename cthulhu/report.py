@@ -273,6 +273,7 @@ def _session_dict(session: Session) -> dict:
                 "response": t.response,
                 "blocked": t.blocked,
                 "leaked": t.leaked,
+                "error": t.error,
                 "note": t.note,
                 "violated": (v.violated if v else None),
                 "judged": (v is not None and v.judge is not None),

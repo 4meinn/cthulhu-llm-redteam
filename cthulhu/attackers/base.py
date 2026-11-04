@@ -73,6 +73,7 @@ class Turn:
     response: str
     blocked: bool = False       # the guardrail refused to send it
     leaked: bool = False        # deterministic success signal (canary or marker)
+    error: bool = False         # the target call failed, so there is no reply to score
     note: str = ""
 
 

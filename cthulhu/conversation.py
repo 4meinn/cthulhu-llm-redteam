@@ -159,7 +159,8 @@ def run_session(
         verdict = combine(det_eff, jv, scoring)
         note = (jv.reason if jv else "") or error or ("leak detected" if det.violated else "no leak detected")
 
-        turn = Turn(move=move, sent=sent, response=response, leaked=det.violated, note=note)
+        turn = Turn(move=move, sent=sent, response=response, leaked=det.violated,
+                    error=bool(error), note=note)
         history.append(turn)
         verdicts.append(verdict)
         convo.append({"role": "user", "content": sent})

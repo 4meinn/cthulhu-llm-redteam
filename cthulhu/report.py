@@ -278,6 +278,8 @@ def _session_dict(session: Session) -> dict:
                 "blocked": t.blocked,
                 "leaked": t.leaked,
                 "error": t.error,
+                "filtered": t.filtered,
+                "raw_leaked": t.raw_leaked,
                 "note": t.note,
                 "violated": (v.violated if v else None),
                 "judged": (v is not None and v.judge is not None),
@@ -361,6 +363,9 @@ def _transcript(session: dict, lines: list[str]) -> None:
             outcome = "objective met"
         elif t["leaked"]:
             outcome = "canary leaked (not this objective's signal)"
+        elif t.get("filtered"):
+            outcome = ("leak caught by the output filter" if t.get("raw_leaked")
+                       else "reply changed by the output filter")
         else:
             outcome = "held"
         lines.append(f"{i}. **{t['tactic']}** -> {outcome}")

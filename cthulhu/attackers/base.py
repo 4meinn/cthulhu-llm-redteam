@@ -74,6 +74,8 @@ class Turn:
     blocked: bool = False       # the guardrail refused to send it
     leaked: bool = False        # deterministic success signal (canary or marker)
     error: bool = False         # the target call failed, so there is no reply to score
+    filtered: bool = False      # the output stage redacted or withheld the reply
+    raw_leaked: bool = False    # the model's own reply held a leak, before any output filtering
     note: str = ""
 
 

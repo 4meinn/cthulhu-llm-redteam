@@ -46,6 +46,7 @@ class TurnRecord:
     deterministic_signal: bool
     judge_verdict: str       # one of JUDGE_VERDICTS
     raw_leak: bool = False   # the model's own reply held a leak, before the output filter
+    proven: bool | None = None   # a met turn a deterministic signal backs, None in an older file
 
 
 @dataclass
@@ -64,6 +65,12 @@ class SessionRecord:
     needs_review: bool
     turns: list[TurnRecord] = field(default_factory=list)
     mode: str = "campaign"   # campaign: one conversation per objective; isolated: one fresh turn per vector
+
+
+def is_proven(session: SessionRecord, turn: TurnRecord) -> bool:
+    """Whether a met turn is proven. A file from before turns carried it falls back to the
+    session, where the one success turn was proven unless the session needs review."""
+    return turn.proven if turn.proven is not None else not session.needs_review
 
 
 def turn_outcome(turn: dict) -> str:
@@ -97,6 +104,7 @@ def _turn_record(index: int, turn: dict) -> TurnRecord:
         deterministic_signal=bool(turn.get("leaked")),
         judge_verdict=_judge_verdict(turn),
         raw_leak=bool(turn.get("raw_leaked")),
+        proven=turn.get("proven"),
     )
 
 

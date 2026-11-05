@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .asr import AsrRow, MODEL_AUTHORED, aggregate, wilson
-from .results import SessionRecord
+from .results import SessionRecord, is_proven
 
 GUARDRAIL_ORDER = ("none", "input", "output", "both")
 LOW_N = 10
@@ -153,7 +153,7 @@ def context_tables(records: list[SessionRecord], show_all: bool = False) -> list
     for rec in camp:
         for turn in rec.turns:
             key = (rec.target, rec.guardrail, turn.vector)
-            if turn.outcome == "objective_met" and not rec.needs_review:
+            if turn.outcome == "objective_met" and is_proven(rec, turn):
                 wins.setdefault(key, []).append(turn.turn)
             elif turn.outcome == "filtered" and turn.raw_leak:
                 catches.setdefault(key, []).append(turn.turn)

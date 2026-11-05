@@ -266,6 +266,8 @@ def _session_dict(session: Session) -> dict:
         "success_turn": session.success_turn,
         "source": source,
         "needs_review": needs_review,
+        "review_turns": [i for i, v in enumerate(session.verdicts, 1)
+                         if v is not None and v.violated and not v.deterministic.violated],
         "ended_reason": session.ended_reason,
         "ended_detail": session.ended_detail,
         "turns": [
@@ -283,6 +285,7 @@ def _session_dict(session: Session) -> dict:
                 "raw_leaked": t.raw_leaked,
                 "note": t.note,
                 "violated": (v.violated if v else None),
+                "proven": bool(v and v.violated and v.deterministic.violated),
                 "judged": (v is not None and v.judge is not None),
                 "judge_violated": (v.judge.violated if v is not None and v.judge is not None else None),
             }
@@ -425,7 +428,8 @@ def session_report_to_markdown(report: dict) -> str:
     else:
         lines.append("The judge flagged these, the deterministic rules did not. Confirm by hand.")
         for ph, s in review:
-            lines.append(f"- `{s['objective']['id']}` ({ph}, turn {s['success_turn']})")
+            turns = ", ".join(str(t) for t in s.get("review_turns") or [s["success_turn"]])
+            lines.append(f"- `{s['objective']['id']}` ({ph}, turn {turns})")
 
     lines += ["", "## Transcripts", ""]
     for ph, sessions in phases:

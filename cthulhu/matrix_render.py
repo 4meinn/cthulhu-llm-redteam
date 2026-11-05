@@ -44,7 +44,7 @@ OUTPUT_NOTE = (
     "the cleaned text."
 )
 CONTEXT_NOTE = (
-    "A campaign stops at its first success, so a vector later in the corpus is tried less often "
+    "A campaign stops at its first proven success, so a vector later in the corpus is tried less often "
     "than an earlier one: \"tried\" is how many times it was reached. \"only in context\" marks a "
     "vector that won in a campaign and never won on its own."
 )

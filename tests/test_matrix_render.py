@@ -77,7 +77,7 @@ def test_the_context_table_shows_where_it_only_won_in_context_and_the_turns():
     md = _md()
     assert "### Context effect: mock:t, guardrail input" in md
     assert "| jb-002 | 0/3 (0.0%) " in md and "3 (turn 19, 19, 19) | only in context |" in md
-    assert "A campaign stops at its first success" in md
+    assert "A campaign stops at its first proven success" in md
 
 
 def test_the_session_matrix_names_the_attacker_and_the_break_turns():

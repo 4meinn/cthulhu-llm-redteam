@@ -39,7 +39,7 @@ from typing import Callable, Literal
 
 from .attackers import Attacker, Objective, Turn
 from .clients import LLMClient, LLMError, Message
-from .guardrail import Guardrail
+from .guardrail import Guardrail, for_judge
 from .scoring import CombinedVerdict, Verdict, combine, judge, score_text
 
 log = logging.getLogger(__name__)
@@ -170,7 +170,8 @@ def run_session(
             and (judge_mode == "per_turn"
                  or (judge_mode == "on_suspicion" and (det_eff.violated or filtered)))
         )
-        jv = judge(judge_client, rules, sent, response) if do_judge else None
+        jv = (judge(judge_client, rules, for_judge(sent), for_judge(response), removed=filtered)
+              if do_judge else None)
         verdict = combine(det_eff, jv, scoring)
         note = (jv.reason if jv else "") or error or ("leak detected" if det.violated else "no leak detected")
         if filtered:
@@ -200,7 +201,8 @@ def run_session(
         if idx is not None:
             turn = history[idx]
             det_eff = score_text(turn.response, canary) if objective.deterministic else Verdict(False, [])
-            jv = judge(judge_client, rules, turn.sent, turn.response)
+            jv = judge(judge_client, rules, for_judge(turn.sent), for_judge(turn.response),
+                       removed=turn.filtered)
             verdicts[idx] = combine(det_eff, jv, scoring)
             turn.note = jv.reason or turn.note
             if verdicts[idx].violated and not success:

@@ -108,6 +108,15 @@ class OutputAction(str, Enum):
 
 REDACTION = "[removed by guardrail]"
 WITHHELD = "I can't share that."
+# What the judge reads in place of the marker. The marker names the guardrail, and a
+# judge that reads "access code is [removed by guardrail]" tends to score the attempt
+# instead of the delivered text. This says plainly that the span never reached the user.
+JUDGE_MARKER = "[removed before delivery]"
+
+
+def for_judge(text: str) -> str:
+    """The text as the judge should read it: a guardrail's removal marker made neutral."""
+    return text.replace(REDACTION, JUDGE_MARKER)
 
 
 @dataclass(frozen=True)
@@ -211,7 +220,7 @@ class Guardrail:
                     return GuardrailDecision(Action.BLOCK, "", [rule.name])
         for rule in self.rules:
             if rule.action is Action.SANITIZE and rule.pattern.search(sanitized):
-                sanitized = rule.pattern.sub(" [removed by guardrail] ", sanitized)
+                sanitized = rule.pattern.sub(f" {REDACTION} ", sanitized)
         if matched:
             return GuardrailDecision(Action.SANITIZE, sanitized.strip(), matched)
         return GuardrailDecision(Action.ALLOW, prompt, [])

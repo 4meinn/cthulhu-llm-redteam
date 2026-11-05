@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .asr import merge_results, result_files, write_aggregate, write_asr
+from .asr import merge_results, result_files, write_aggregate, write_asr, write_review
 from .campaign import run_attack_run
 from .clients import LLMClient, build_client
 from .config import load_config
@@ -202,6 +202,11 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     return 0
 
 
+def _wrote(*paths: Path | None) -> str:
+    names = [str(p) for p in paths if p is not None]
+    return "wrote " + ", ".join(names[:-1]) + " and " + names[-1]
+
+
 def _cmd_sweep(args: argparse.Namespace) -> int:
     try:
         sweep, base = load_sweep(args.config)
@@ -238,7 +243,8 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
         return 130 if result.cancelled else 1       # nothing finished, so nothing to tabulate
     csv_path, md_path = write_aggregate(records, sweep.out)
     matrix_md, matrix_csv = write_matrix(records, sweep.out)
-    print(f"wrote {csv_path}, {md_path}, {matrix_md} and {matrix_csv}")
+    review = write_review(records, sweep.out)
+    print(_wrote(csv_path, md_path, matrix_md, matrix_csv, review))
     return 130 if result.cancelled else (1 if result.failed else 0)
 
 
@@ -254,8 +260,9 @@ def _cmd_aggregate(args: argparse.Namespace) -> int:
                        else Path("out/aggregate"))
     csv_path, md_path = write_aggregate(records, out)
     matrix_md, matrix_csv = write_matrix(records, out, show_all=args.all)
+    review = write_review(records, out)
     print(f"{len(records)} session(s) from {len(result_files(args.paths))} file(s)")
-    print(f"wrote {csv_path}, {md_path}, {matrix_md} and {matrix_csv}")
+    print(_wrote(csv_path, md_path, matrix_md, matrix_csv, review))
     return 0
 
 

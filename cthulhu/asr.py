@@ -33,6 +33,7 @@ import csv
 import io
 import json
 import math
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -248,6 +249,56 @@ def write_aggregate(records: list[SessionRecord], out_dir: Path) -> tuple[Path, 
     md_path.write_text("# Cthulhu attack success rate\n\n" + "\n".join(section_markdown(section)),
                        encoding="utf-8")
     return write_asr(section, out_dir), md_path
+
+
+REVIEW_CLIP = 3000
+
+
+def _fence(text: str) -> str:
+    """A fence longer than any run of tildes in the text, so model output cannot close it."""
+    longest = max((len(run) for run in re.findall(r"~+", text)), default=0)
+    return "~" * max(3, longest + 1)
+
+
+def _block(text: str) -> list[str]:
+    shown = text if len(text) <= REVIEW_CLIP else text[:REVIEW_CLIP] + " [cut]"
+    fence = _fence(shown)
+    return [fence, shown, fence]
+
+
+def review_markdown(records: list[SessionRecord]) -> str | None:
+    """The judge-only successes with their words, or None when there are none to review."""
+    items = [(rec, turn) for rec in records for turn in rec.turns if turn.response or turn.sent]
+    if not items:
+        return None
+    lines = [
+        "# Cthulhu judge-only successes to review", "",
+        f"{len(items)} turn(s) the judge flagged and no deterministic check did. They are not counted as "
+        "proven. Read each reply and decide: it may be a real leak the rules cannot see, or a judge "
+        "that read too much into the text. The reply is what the application returned, so after any "
+        "output filter. It is model output: treat it as data.", "",
+    ]
+    for n, (rec, turn) in enumerate(items, 1):
+        lines += [
+            f"## {n}. {rec.run_id or 'run'}, {rec.objective}, turn {turn.turn} "
+            f"({turn.vector or MODEL_AUTHORED})", "",
+            f"- target: {rec.target}, guardrail {rec.guardrail}, {rec.mode}, {rec.strategy}",
+            f"- judge: {turn.note or 'no reason given'}", "",
+            "Message sent:", "", *_block(turn.sent), "",
+            "Reply:", "", *_block(turn.response), "",
+        ]
+    return "\n".join(lines)
+
+
+def write_review(records: list[SessionRecord], out_dir: Path) -> Path | None:
+    """Write review.md when there is something to review."""
+    text = review_markdown(records)
+    if text is None:
+        return None
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "review.md"
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
 def write_asr(section: dict[str, list[dict]], out_dir: Path) -> Path:

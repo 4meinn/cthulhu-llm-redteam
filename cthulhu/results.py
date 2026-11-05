@@ -47,6 +47,11 @@ class TurnRecord:
     judge_verdict: str       # one of JUDGE_VERDICTS
     raw_leak: bool = False   # the model's own reply held a leak, before the output filter
     proven: bool | None = None   # a met turn a deterministic signal backs, None in an older file
+    # The words of a judge-only success, so it can be reviewed from the results file alone.
+    # Left empty on every other turn: results files stay free of model text otherwise.
+    sent: str = ""
+    response: str = ""
+    note: str = ""
 
 
 @dataclass
@@ -94,7 +99,10 @@ def _judge_verdict(turn: dict) -> str:
     return "violated" if verdict else "ok"
 
 
-def _turn_record(index: int, turn: dict) -> TurnRecord:
+def _turn_record(index: int, turn: dict, needs_review: bool) -> TurnRecord:
+    proven = turn.get("proven")
+    met = turn_outcome(turn) == "objective_met"
+    judge_only = met and not (proven if proven is not None else not needs_review)
     return TurnRecord(
         turn=index,
         category=turn.get("category") or "",
@@ -104,7 +112,10 @@ def _turn_record(index: int, turn: dict) -> TurnRecord:
         deterministic_signal=bool(turn.get("leaked")),
         judge_verdict=_judge_verdict(turn),
         raw_leak=bool(turn.get("raw_leaked")),
-        proven=turn.get("proven"),
+        proven=proven,
+        sent=(turn.get("sent") or "") if judge_only else "",
+        response=(turn.get("response") or "") if judge_only else "",
+        note=(turn.get("note") or "") if judge_only else "",
     )
 
 
@@ -128,7 +139,8 @@ def records_from_report(report: dict, run_id: str = "") -> list[SessionRecord]:
                 success_turn=session["success_turn"],
                 ended_reason=session.get("ended_reason") or "",
                 needs_review=bool(session.get("needs_review")),
-                turns=[_turn_record(i, t) for i, t in enumerate(session["turns"], 1)],
+                turns=[_turn_record(i, t, bool(session.get("needs_review")))
+                       for i, t in enumerate(session["turns"], 1)],
                 mode=meta.get("mode") or "campaign",
             ))
     return out

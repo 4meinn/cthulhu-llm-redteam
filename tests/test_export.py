@@ -85,7 +85,8 @@ def test_json_has_nested_turns_and_the_tactic():
     first = data["sessions"][0]
     assert first["run_id"] == "r1" and first["turns"]
     assert set(first["turns"][0]) == {"turn", "category", "vector", "tactic", "outcome",
-                                      "deterministic_signal", "judge_verdict", "raw_leak", "proven"}
+                                      "deterministic_signal", "judge_verdict", "raw_leak", "proven",
+                                      "sent", "response", "note"}
 
 
 def test_csv_is_one_row_per_turn_and_leaves_the_tactic_out():

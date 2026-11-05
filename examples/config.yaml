@@ -13,6 +13,8 @@ canary: NW-7f3a9c21-ZEPHYR
 
 categories: []            # empty runs every category
 guardrail: false
+guardrail_mode: input     # which stages the guarded phase uses: input | output | both (used by `attack`)
+output_secrets: []        # secrets the output stage guards besides the canary
 iterations: 1
 output_dir: out
 

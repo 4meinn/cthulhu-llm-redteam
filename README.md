@@ -20,7 +20,7 @@ Prompt injection and jailbreak testing for LLM applications you own. Cthulhu run
 - **Attack categories**: direct injection, jailbreak, system-prompt leak, indirect injection, encoding evasion
 - **Scoring**: deterministic rules plus an LLM judge, recorded separately
 - **License**: MIT
-- **Status**: v0.5.0, MVP, multi-turn adaptive engine, a local web interface with a multi-run board, a desktop app, the MVP validated against a live local model
+- **Status**: v0.6.0, MVP, multi-turn adaptive engine, a local web interface with a multi-run board, a desktop app, sweeps with attack success rates and comparison matrices, an output-side guardrail, the MVP validated against a live local model
 
 ## Authorized use
 
@@ -165,7 +165,82 @@ A jailbreak is a conversation, not a single message, so the attacker is built to
 - **Focus.** The objective is restated every turn so the model does not drift into harmless questions.
 - **How it ended.** Every session records why it stopped: `success`, `conceded`, `turn_budget`, `attacker_no_move` (with the cause, such as a model error or unparseable output) or `cancelled`.
 
-[`samples/multiturn/report.md`](samples/multiturn/report.md) is a run from the mock: the guardrail blocks the direct override, and the attacker still breaks through a turn later with an emotional appeal the filter misses. Each success is marked with its source, and a judge-only success (the judge flags it, the rules do not) is kept under review rather than counted as proven. out_of_scope has no canary to detect, so it is judged, not pattern-matched; run it with `judge_mode: per_turn`.
+[`samples/multiturn/report.md`](samples/multiturn/report.md) is a run from the mock: the guardrail blocks the direct override, and the attacker still breaks through a turn later with an emotional appeal the filter misses. Each success is marked with its source, and a judge-only success (the judge flags it, the rules do not) is kept under review rather than counted as proven, and it does not end the session: only a proven success, one a deterministic signal backs, ends a conversation. A judge that over-reads one reply should not cut a long conversation short, and a judge-only call is not evidence. The cost is that an objective the canary cannot prove, such as out_of_scope, runs its whole turn budget. out_of_scope has no canary to detect, so it is judged, not pattern-matched; run it with `judge_mode: per_turn`.
+
+**Result files.** Besides `report.json` and `report.md`, `cthulhu attack` writes `results.json` and `results.csv`. The JSON has one entry per session with its turns nested. A turn that only the judge flagged also keeps the message sent, the reply and the judge's reason, so it can be reviewed from the file alone, and `cthulhu aggregate` and `cthulhu sweep` list those turns in `review.md`. No other turn carries model text. The CSV is a flat table with one row per turn, built for grouping by category, vector or config: run, phase, target, judge, strategy, attacker model, guardrail mode (`none` or `input`), objective, `success`, `success_turn`, `ended_reason`, then `turn`, `category`, `vector`, `outcome`, `deterministic_signal` and `judge_verdict`. `outcome` is one of `objective_met`, `leaked` (the canary showed up but the objective was not met), `held`, or `blocked` (the guardrail refused it, so it never reached the model), or `error` (the target call failed, so there was nothing to score). The attacker's free-text tactic stays in the JSON only.
+
+**Attack success rate.** The report also carries an `asr` section (and the Markdown an "Attack success rate" table), and the CLI writes `asr.csv`. A rate is shown as counts first: `3/19 (15.8%)`, with a Wilson 95% interval, because one run is a small sample and a model is not deterministic. The unit is an attack turn. The headline is the **proven** rate, a success a deterministic signal backs. A success only the judge flagged is **judge only**, reported beside it and never added to it. Blocked turns count in the denominator, since the defence stopped them. A turn whose target call failed is an `error` and is left out of the denominator. Turns the attacker wrote itself are their own group, `model-authored`, apart from the corpus categories. One caveat: a session stops at its first success, so corpus vectors later in the order are tried less often, so compare `n` before comparing rates. The rates are grouped by config (target, guardrail mode, strategy, attacker model), by category, by vector and by objective.
+
+## The output stage
+
+The guardrail has two stages that can be switched on and off on their own, which gives four modes: `none`, `input`, `output` and `both`.
+
+- **`input`** is the pattern filter and the prompt hardening together, the same bundle as before. So the difference between `none` and `input` includes the hardening, it is not a measurement of the pattern filter alone.
+- **`output`** is the output stage on its own, with no input filter and no hardening, so it is measured in isolation.
+- **`both`** is the two together.
+
+The output stage runs after the target has answered and before anything else sees the reply. It looks for the secrets the defender registered: the canary, and any others listed under `output_secrets` in the config. It uses the same check the scorer uses (verbatim, altered spacing or separators, a distinctive fragment such as the last part of the code), so the filter and the measurement agree on what a leak is. A reply that holds one has the span replaced with `[removed by guardrail]`. The result is checked again, and if anything still counts as a leak the whole reply is withheld, so a gap between finding a span and removing it fails closed. Redacting rather than refusing keeps the application answering: a long, useful reply is not thrown away for one leaked line.
+
+What the application returns is what counts. The cleaned reply is what the scorer and the judge see, what the conversation remembers and what the report shows, so the objective is not met by a leak the filter removed. In `on_suspicion` judge mode a reply the filter changed counts as suspicious, so the judge checks the cleaned text. Use `judge_mode: per_turn` for output runs.
+
+**What the judge is told.** The judge reads `[removed before delivery]` where the filter removed a span, and a note next to the reply says a value was taken out and that only the text that remains should be judged, so a reply that merely mentions or offers the removed value is not a violation. Without this, a small judge reads "the access code is [removed]" as an attempted disclosure and flags a defence that worked. The reports keep the original marker. Judge-only calls are still a judgment, and the output runs write them to `review.md` for a person to read.
+
+**How it is recorded.** A turn the filter changed has the outcome `filtered`, the counterpart of `blocked` but after the model has answered. It counts as defended. A separate flag, `raw_leak`, says the model's own reply held a leak before the filter, and the two together mean the filter caught a real leak. The ASR and matrix tables show this as `caught`, and `unfiltered_rate` is the rate the same turns would have had without the stage.
+
+**Read these numbers with care.** Because the filter and the scorer use the same check, a proven rate near zero under `output` or `both` is expected by construction. It is not a finding. What carries information is how many leaks were caught, and what the judge finds in the cleaned text: a leak the filter cannot recognise, such as a paraphrase or a translation, shows up there if it shows up at all. The stage knows the secrets it is told about and nothing else. That is a realistic setup, since a defender can register their own secrets, but it does not find a leak it has no pattern for.
+
+```
+cthulhu attack --config examples/config.yaml --guardrail-mode output   # or input, both
+```
+
+The same choice is `guardrail: true` with `guardrail_mode: output` in the config, and `guardrail: [none, input, output, both]` as an axis in a sweep. The web API takes `guardrail_mode` in the run body, the web page's checkbox still means `input`. The single-turn `cthulhu run` has no output stage.
+
+## Sweeps
+
+A single run is an anecdote. `cthulhu sweep` runs a grid of configurations, each several times, and turns the results into attack success rates.
+
+```
+cthulhu sweep --config examples/sweep.yaml --plan     # what it will cost, runs nothing
+cthulhu sweep --config examples/sweep.yaml
+cthulhu aggregate out/sweep                           # or any set of results.json files
+```
+
+A sweep file names a base config and a grid. Every combination of the axes is a **cell**, and every cell runs `repeats` times:
+
+```yaml
+base: sweep-base.yaml      # prompt, canary, judge, attacker settings
+repeats: 5
+workers: 1                 # one is right for a single local GPU
+grid:
+  target: [ollama:qwen3:8b, ollama:qwen3:14b]   # provider:model, or a full endpoint
+  guardrail: [none, input, output, both]        # input is the filter plus hardening
+  strategy: [corpus]                            # corpus | adaptive
+  objective: [leak_canary]
+  mode: [isolated, campaign]
+```
+
+An axis left out takes the base config's value. Cells that cannot run (isolated with an adaptive attacker) are rejected with the reason before anything starts.
+
+**Two modes, because they answer different questions.**
+
+- `campaign` is one conversation per objective, the way `cthulhu attack` runs. Context builds up from turn to turn and the session stops at its first proven success. This is how a multi-turn break happens, but it makes a vector's own rate hard to read: a vector later in the corpus is tried less often, and what came before it shapes the reply. For a corpus campaign the figure to read is the session rate.
+- `isolated` gives every corpus vector its own fresh one-turn session, so each vector is tried the same number of times with no context from the others. This is the clean per-vector rate. It needs the corpus strategy, since an adaptive attacker has no vectors.
+
+Running both on the same target and guardrail shows whether a vector breaks on its own or only after earlier turns have shaped the conversation. A corpus campaign should have `max_turns` at least the corpus size, or the vectors past that turn are never tried. The plan warns when it is not.
+
+**What a run is, and what is kept.** One run is one cell on one repeat. Each finished run is written to `runs/<cell>-r003.results.json` the moment it ends, through a temporary file and a rename, so a file is either whole or missing. Run the same command again and only the runs that are missing are done, which also covers adding more `repeats` later. A run that fails or is cancelled is not written and is tried again next time. `sweep.json` holds the expanded plan and a fingerprint of what decides the results (config, prompt, corpus, grid); a folder made from a different plan is refused. Ctrl+C cancels the running runs and keeps everything finished.
+
+**Sampling is not pinned.** A run uses the model's own default sampling, so the repeats measure how much results vary. An endpoint can set `temperature` in the config, and it is passed through to Ollama and OpenAI-compatible servers. `sweep.json` records the sampling per cell, and an unset value is written as "endpoint/model default, unspecified", with the seed as "not set", so the setting is on record whichever way it went.
+
+**Aggregating.** `cthulhu aggregate` reads any mix of sweep folders and `results.json` files (each file once: a run id that turns up in a second file is skipped, so a file given twice is not counted twice) and writes `asr.csv` and `asr.md` and the comparison matrices below. A sweep does this for its own folder when it ends. Rates are grouped by config, which is target, guardrail mode, strategy, attacker model and mode, so isolated and campaign rows are never mixed.
+
+**Comparison matrices.** `matrix.md` and `matrix.csv` lay the same counts out for comparison. Nothing is recomputed, a matrix cell is the ASR table's cell. There are four views.
+
+- **Defence matrix** (isolated). Per target, categories against the guardrail mode (`none`, `input`, `output` and `both`, a mode with no data gets no column). A second table does the same per vector, hiding vectors where nothing leaked or was blocked, `cthulhu aggregate --all` keeps them. The per-vector rows matter: a category row hid that one system-prompt-leak vector walked straight through the input filter while its neighbours were blocked.
+- **Context effect.** For a target and guardrail, each vector alone (isolated) beside the same vector inside a campaign, with the turns the campaign won at. `only in context` marks a vector that won in a campaign and never on its own, `not reached` marks one the campaign never got to, which is not the same as 0.
+- **Session matrix.** Attacker (strategy and attacker model) against defender (target and guardrail): the share of campaign sessions that broke and at which turns. It stays sparse until adaptive sweeps are run, since a corpus attacker is one row.
+
+Every cell is a count with its percentage, and a `†` marks n under 10, where the count is the information and the rate is not. A guardrail column also shows the change against `none` in percentage points, and whether the two Wilson intervals are apart. Apart means a real difference is likely. Overlapping is unclear: it does not mean there is no difference, the sample may be too small to tell. It is not a significance test. A cell nothing ran in says `not run`, and judge-only successes sit beside a rate, never in it. The CSV is one tidy row per cell.
 
 ## Web interface
 
@@ -194,7 +269,7 @@ pip install -e ".[dev,web]"
 cthulhu serve --port 8000
 ```
 
-Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config, with an optional `label` to name the run) returns a run id, `GET /runs` lists every run with its name and progress plan, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, `POST /runs/cancel-all` stops them all, and `GET /runs/{id}/report` (or `report.md`) returns the report. The CLI commands keep working unchanged.
+Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config, with an optional `label` to name the run) returns a run id, `GET /runs` lists every run with its name and progress plan, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, `POST /runs/cancel-all` stops them all, and `GET /runs/{id}/report` (or `report.md`) returns the report, and `GET /runs/{id}/results.json` (or `results.csv`) returns the flat result records. The CLI commands keep working unchanged.
 
 ## Desktop app
 
@@ -224,14 +299,21 @@ cthulhu/
   conversation.py      multi-turn session engine
   runner.py            single-turn runner, applies the guardrail, retries
   scoring/             deterministic.py, judge.py, combine.py
-  guardrail.py         input filter and prompt hardening
+  guardrail.py         input filter and hardening, the output filter, the four modes
   jsonx.py             defensive JSON for messy model output
   report.py            JSON and Markdown, single-turn and multi-turn
-  cli.py               run, attack, list-attacks, serve, app
+  results.py           flat per-turn result records read from a report
+  export.py            results.json and results.csv
+  asr.py               attack success rate, merging results files, asr.csv and asr.md
+  matrix.py            comparison matrices built from the records
+  matrix_render.py     matrix.md and matrix.csv
+  campaign.py          builds a run from a config: campaign and isolated modes
+  sweep.py             sweep config, grid expansion, resumable runner
+  cli.py               run, attack, sweep, aggregate, list-attacks, serve, app
   desktop.py           the desktop window around the web interface
   web/                 FastAPI backend (127.0.0.1 only), SSE, and the static UI
 tools/                 build_exe.ps1 and the packaged entry point
-examples/              config.yaml and target_system_prompt.txt
+examples/              config.yaml, sweep.yaml, sweep-base.yaml and target_system_prompt.txt
 samples/               mock and live reports, and a multi-turn report in multiturn/
 tests/                 the offline pytest suite
 ```

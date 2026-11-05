@@ -1,0 +1,14 @@
+# A sweep: every combination of the grid is a cell, and each cell runs `repeats` times.
+# Run it with: cthulhu sweep --config examples/sweep.yaml   (add --plan to see the cost first)
+name: guardrail-effect
+base: sweep-base.yaml
+out: out/sweep
+repeats: 3
+workers: 1                # one is right for a single local GPU
+
+grid:
+  target: [mock:qwen3:8b]          # provider:model, e.g. ollama:qwen3:8b, ollama:qwen3:14b
+  guardrail: [none, input]         # none | input | output | both (input is the filter plus hardening)
+  strategy: [corpus]               # corpus | adaptive
+  objective: [leak_canary]
+  mode: [isolated, campaign]       # isolated: each vector alone; campaign: one conversation

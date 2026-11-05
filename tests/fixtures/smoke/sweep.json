@@ -1,0 +1,92 @@
+{
+  "name": "smoke-qwen3-8b",
+  "cthulhu": "0.5.0",
+  "fingerprint": "10f5e431d5627409cd0e7db2244581ce9ffdfb19a824b1eca09987361037f89f",
+  "repeats": 3,
+  "workers": 1,
+  "max_turns": 30,
+  "judge_mode": "on_suspicion",
+  "scoring": "any",
+  "judge": "ollama:qwen3:14b",
+  "attacker_model": null,
+  "corpus_size": 29,
+  "cells": [
+    {
+      "id": "ollama-qwen3-8b-none-corpus-leak_canary-isolated",
+      "target": "ollama:qwen3:8b",
+      "guardrail": "none",
+      "strategy": "corpus",
+      "objective": "leak_canary",
+      "mode": "isolated",
+      "sampling": {
+        "target": {
+          "temperature": "endpoint/model default, unspecified",
+          "seed": "not set"
+        },
+        "judge": {
+          "temperature": "endpoint/model default, unspecified",
+          "seed": "not set"
+        },
+        "attacker": null
+      }
+    },
+    {
+      "id": "ollama-qwen3-8b-none-corpus-leak_canary-campaign",
+      "target": "ollama:qwen3:8b",
+      "guardrail": "none",
+      "strategy": "corpus",
+      "objective": "leak_canary",
+      "mode": "campaign",
+      "sampling": {
+        "target": {
+          "temperature": "endpoint/model default, unspecified",
+          "seed": "not set"
+        },
+        "judge": {
+          "temperature": "endpoint/model default, unspecified",
+          "seed": "not set"
+        },
+        "attacker": null
+      }
+    },
+    {
+      "id": "ollama-qwen3-8b-input-corpus-leak_canary-isolated",
+      "target": "ollama:qwen3:8b",
+      "guardrail": "input",
+      "strategy": "corpus",
+      "objective": "leak_canary",
+      "mode": "isolated",
+      "sampling": {
+        "target": {
+          "temperature": "endpoint/model default, unspecified",
+          "seed": "not set"
+        },
+        "judge": {
+          "temperature": "endpoint/model default, unspecified",
+          "seed": "not set"
+        },
+        "attacker": null
+      }
+    },
+    {
+      "id": "ollama-qwen3-8b-input-corpus-leak_canary-campaign",
+      "target": "ollama:qwen3:8b",
+      "guardrail": "input",
+      "strategy": "corpus",
+      "objective": "leak_canary",
+      "mode": "campaign",
+      "sampling": {
+        "target": {
+          "temperature": "endpoint/model default, unspecified",
+          "seed": "not set"
+        },
+        "judge": {
+          "temperature": "endpoint/model default, unspecified",
+          "seed": "not set"
+        },
+        "attacker": null
+      }
+    }
+  ],
+  "created": "2026-11-04T19:37:48+00:00"
+}

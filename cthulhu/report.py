@@ -13,8 +13,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Callable
 
+from .asr import asr_section, section_markdown
+from .config import RunConfig
 from .conversation import Session
 from .corpus import partition as default_partition
+from .results import records_from_report
 from .runner import AttackResult
 from .scoring import CombinedVerdict, agreement_rate
 
@@ -233,6 +236,24 @@ def _success_source(session: Session) -> tuple[str | None, bool]:
     return "unknown", False
 
 
+def run_meta(cfg: RunConfig) -> dict:
+    """The run settings every multi-turn report carries, shared by the CLI and the web."""
+    attacker = cfg.attacker
+    # only an adaptive attacker uses its model, a corpus run has none to name
+    endpoint = attacker.endpoint if attacker and attacker.strategy == "adaptive" else None
+    return {
+        "target": f"{cfg.target.provider}:{cfg.target.model}",
+        "judge": f"{cfg.judge.provider}:{cfg.judge.model}" if cfg.judge else None,
+        "scoring": cfg.scoring,
+        "judge_mode": attacker.judge_mode if attacker else None,
+        "guardrail": cfg.guardrail,
+        "guardrail_mode": cfg.guardrail_mode,
+        "strategy": attacker.strategy if attacker else None,
+        "attacker_model": f"{endpoint.provider}:{endpoint.model}" if endpoint else None,
+        "mode": "campaign",
+    }
+
+
 def _session_dict(session: Session) -> dict:
     source, needs_review = _success_source(session)
     return {
@@ -245,19 +266,28 @@ def _session_dict(session: Session) -> dict:
         "success_turn": session.success_turn,
         "source": source,
         "needs_review": needs_review,
+        "review_turns": [i for i, v in enumerate(session.verdicts, 1)
+                         if v is not None and v.violated and not v.deterministic.violated],
         "ended_reason": session.ended_reason,
         "ended_detail": session.ended_detail,
         "turns": [
             {
                 "tactic": t.move.tactic,
+                "category": t.move.category,
+                "vector": t.move.vector,
                 # A blocked turn is never sent, so keep the attempted message for the report.
                 "sent": t.move.prompt if t.blocked else t.sent,
                 "response": t.response,
                 "blocked": t.blocked,
                 "leaked": t.leaked,
+                "error": t.error,
+                "filtered": t.filtered,
+                "raw_leaked": t.raw_leaked,
                 "note": t.note,
                 "violated": (v.violated if v else None),
+                "proven": bool(v and v.violated and v.deterministic.violated),
                 "judged": (v is not None and v.judge is not None),
+                "judge_violated": (v.judge.violated if v is not None and v.judge is not None else None),
             }
             for t, v in zip(session.turns, session.verdicts, strict=True)
         ],
@@ -286,13 +316,26 @@ def build_session_report(
                 "deterministic": s.objective.deterministic,
                 "owasp": OBJECTIVE_OWASP.get(s.objective.id, "LLM01"),
             })
-    return {
+    report = {
         "meta": {**meta, "has_guarded": guarded is not None,
                  "judge_agreement": None if rate is None else round(rate, 3)},
         "objectives": objectives,
         "baseline": [_session_dict(s) for s in baseline],
         "guarded": None if guarded is None else [_session_dict(s) for s in guarded],
     }
+    report["asr"] = asr_section(records_from_report(report))
+    return report
+
+
+def build_phase_report(sessions: list[Session], phase: str, meta: dict) -> dict:
+    """A report for a single phase, as one sweep cell produces it."""
+    report = build_session_report(sessions, None, meta)
+    if phase == "baseline":
+        return report
+    report = {**report, "baseline": [], "guarded": report["baseline"],
+              "meta": {**report["meta"], "has_guarded": True}}
+    report["asr"] = asr_section(records_from_report(report))
+    return report
 
 
 def _outcome(session: dict | None) -> str:
@@ -324,6 +367,9 @@ def _transcript(session: dict, lines: list[str]) -> None:
             outcome = "objective met"
         elif t["leaked"]:
             outcome = "canary leaked (not this objective's signal)"
+        elif t.get("filtered"):
+            outcome = ("leak caught by the output filter" if t.get("raw_leaked")
+                       else "reply changed by the output filter")
         else:
             outcome = "held"
         lines.append(f"{i}. **{t['tactic']}** -> {outcome}")
@@ -363,6 +409,10 @@ def session_report_to_markdown(report: dict) -> str:
             row += f" {_outcome(g_by.get(obj['id']))} |"
         lines.append(row)
 
+    if report.get("asr"):
+        lines.append("")
+        lines += section_markdown(report["asr"])
+
     lines += ["", "## What broke and how", ""]
     phases = [("baseline", report["baseline"])] + ([("guarded", report["guarded"])] if guarded else [])
     broke = [(ph, s) for ph, sessions in phases for s in sessions if s["success"]]
@@ -378,7 +428,8 @@ def session_report_to_markdown(report: dict) -> str:
     else:
         lines.append("The judge flagged these, the deterministic rules did not. Confirm by hand.")
         for ph, s in review:
-            lines.append(f"- `{s['objective']['id']}` ({ph}, turn {s['success_turn']})")
+            turns = ", ".join(str(t) for t in s.get("review_turns") or [s["success_turn"]])
+            lines.append(f"- `{s['objective']['id']}` ({ph}, turn {turns})")
 
     lines += ["", "## Transcripts", ""]
     for ph, sessions in phases:

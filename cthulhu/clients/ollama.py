@@ -16,14 +16,18 @@ class OllamaClient(LLMClient):
         model: str,
         timeout: float = 120.0,
         transport: httpx.BaseTransport | None = None,
+        temperature: float | None = None,
     ) -> None:
         self.model = model
+        self.temperature = temperature
         self._http = httpx.Client(
             base_url=base_url.rstrip("/"), timeout=timeout, transport=transport
         )
 
     def chat(self, messages: list[Message]) -> str:
-        payload = {"model": self.model, "messages": messages, "stream": False}
+        payload: dict = {"model": self.model, "messages": messages, "stream": False}
+        if self.temperature is not None:
+            payload["options"] = {"temperature": self.temperature}
         try:
             resp = self._http.post("/api/chat", json=payload)
             resp.raise_for_status()
@@ -42,8 +46,10 @@ class OpenAICompatClient(LLMClient):
         api_key: str | None = None,
         timeout: float = 120.0,
         transport: httpx.BaseTransport | None = None,
+        temperature: float | None = None,
     ) -> None:
         self.model = model
+        self.temperature = temperature
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._http = httpx.Client(
             base_url=base_url.rstrip("/"),
@@ -53,7 +59,9 @@ class OpenAICompatClient(LLMClient):
         )
 
     def chat(self, messages: list[Message]) -> str:
-        payload = {"model": self.model, "messages": messages, "stream": False}
+        payload: dict = {"model": self.model, "messages": messages, "stream": False}
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
         try:
             resp = self._http.post("/v1/chat/completions", json=payload)
             resp.raise_for_status()

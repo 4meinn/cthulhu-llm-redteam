@@ -7,14 +7,20 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .asr import merge_results, result_files, write_aggregate, write_asr, write_review
 from .campaign import run_attack_run
 from .clients import LLMClient, build_client
 from .config import load_config
 from .corpus import available_categories, load_corpus
+from .export import write_results
 from .guardrail import Guardrail
-from .report import build_report, build_session_report, write_report, write_session_report
+from .matrix_render import write_matrix
+from .report import build_report, build_session_report, run_meta, write_report, write_session_report
 from .runner import AttackResult, run_attacks
 from .scoring import CombinedVerdict, combine, judge, score
+from .sweep import (
+    SweepMismatch, SweepResult, expand, format_plan, load_sweep, make_plan, run_sweep,
+)
 from .ui import BANNER, color_enabled, paint
 
 
@@ -43,12 +49,28 @@ def _parser() -> argparse.ArgumentParser:
         "--guardrail", action=argparse.BooleanOptionalAction, default=None,
         help="override the config's guardrail setting",
     )
+    atk.add_argument(
+        "--guardrail-mode", choices=("input", "output", "both"), default=None,
+        help="which guardrail stages the guarded phase uses (turns the guardrail on)",
+    )
     atk.add_argument("--out", type=Path, help="output directory")
 
     sv = sub.add_parser("serve", help="run the local web backend on 127.0.0.1")
     sv.add_argument("--port", type=int, default=8000)
 
     sub.add_parser("app", help="open the web interface in a desktop window")
+
+    sw = sub.add_parser("sweep", help="run a grid of configs, each several times")
+    sw.add_argument("--config", required=True, type=Path)
+    sw.add_argument("--plan", action="store_true", help="show what would run and stop")
+    sw.add_argument("--workers", type=int, help="runs at the same time (default from the file)")
+    sw.add_argument("--out", type=Path, help="output folder (default from the file)")
+
+    ag = sub.add_parser("aggregate", help="combine results files into attack success rates")
+    ag.add_argument("paths", nargs="+", type=Path, help="results.json files, or sweep folders")
+    ag.add_argument("--out", type=Path, help="where to write the asr and matrix files")
+    ag.add_argument("--all", action="store_true",
+                    help="keep the all-zero vector rows the matrix leaves out by default")
     return p
 
 
@@ -144,6 +166,8 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
         return 2
     if args.guardrail is not None:
         cfg.guardrail = args.guardrail
+    if args.guardrail_mode:
+        cfg.guardrail, cfg.guardrail_mode = True, args.guardrail_mode
     if args.out:
         cfg.output_dir = args.out
     if args.objective:
@@ -156,7 +180,7 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     print(paint(BANNER, "primary", color))
     print(f"{cfg.attacker.strategy} attacker, {len(cfg.attacker.objectives)} objective(s), "
           f"up to {cfg.attacker.max_turns} turns, judge={cfg.attacker.judge_mode}, "
-          f"guardrail {'on' if cfg.guardrail else 'off'}")
+          f"guardrail {cfg.guardrail_mode if cfg.guardrail else 'off'}")
 
     try:
         baseline, guarded = run_attack_run(cfg, on_event=_attack_printer(color))
@@ -164,14 +188,7 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    meta = {
-        "target": f"{cfg.target.provider}:{cfg.target.model}",
-        "judge": f"{cfg.judge.provider}:{cfg.judge.model}" if cfg.judge else None,
-        "scoring": cfg.scoring,
-        "judge_mode": cfg.attacker.judge_mode,
-        "guardrail": cfg.guardrail,
-    }
-    report = build_session_report(baseline, guarded, meta)
+    report = build_session_report(baseline, guarded, run_meta(cfg))
     json_path, md_path = write_session_report(report, cfg.output_dir)
 
     met_b = sum(s.success for s in baseline)
@@ -179,7 +196,73 @@ def _cmd_attack(args: argparse.Namespace, color: bool) -> int:
     if guarded is not None:
         summary += f", guarded: {sum(s.success for s in guarded)}/{len(guarded)} met"
     print(paint(summary, "crimson" if met_b else "teal", color))
-    print(f"wrote {json_path} and {md_path}")
+    results_json, results_csv = write_results(report, cfg.output_dir)
+    asr_csv = write_asr(report["asr"], cfg.output_dir)
+    print(f"wrote {json_path}, {md_path}, {results_json}, {results_csv} and {asr_csv}")
+    return 0
+
+
+def _wrote(*paths: Path | None) -> str:
+    names = [str(p) for p in paths if p is not None]
+    return "wrote " + ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _cmd_sweep(args: argparse.Namespace) -> int:
+    try:
+        sweep, base = load_sweep(args.config)
+        if args.workers:
+            sweep.workers = args.workers
+        if args.out:
+            sweep.out = args.out
+        cells = expand(sweep, base)
+    except (ValueError, OSError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    plan = make_plan(sweep, base, cells)
+    print(format_plan(plan, cells))
+    if args.plan:
+        return 0
+
+    def progress(run_id: str, status: str, result: SweepResult, total: int) -> None:
+        count = len(result.done) + len(result.failed)
+        note = f" ({result.failed[run_id]})" if run_id in result.failed else ""
+        print(f"  [{count}/{total}] {run_id}: {status}{note}")
+
+    try:
+        result = run_sweep(sweep, base, cells, on_progress=progress)
+    except SweepMismatch as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    print(f"{len(result.done)} run(s) finished, {result.skipped} already done, "
+          f"{len(result.failed)} failed")
+    if result.cancelled:
+        print("stopped early: run the same command again to carry on")
+    try:
+        records, _ = merge_results(result_files([sweep.out]))
+    except ValueError:
+        return 130 if result.cancelled else 1       # nothing finished, so nothing to tabulate
+    csv_path, md_path = write_aggregate(records, sweep.out)
+    matrix_md, matrix_csv = write_matrix(records, sweep.out)
+    review = write_review(records, sweep.out)
+    print(_wrote(csv_path, md_path, matrix_md, matrix_csv, review))
+    return 130 if result.cancelled else (1 if result.failed else 0)
+
+
+def _cmd_aggregate(args: argparse.Namespace) -> int:
+    try:
+        records, skipped = merge_results(result_files(args.paths))
+    except (ValueError, OSError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    for run_id in skipped:
+        print(f"skipped {run_id}: already counted from an earlier file", file=sys.stderr)
+    out = args.out or (args.paths[0] if len(args.paths) == 1 and args.paths[0].is_dir()
+                       else Path("out/aggregate"))
+    csv_path, md_path = write_aggregate(records, out)
+    matrix_md, matrix_csv = write_matrix(records, out, show_all=args.all)
+    review = write_review(records, out)
+    print(f"{len(records)} session(s) from {len(result_files(args.paths))} file(s)")
+    print(_wrote(csv_path, md_path, matrix_md, matrix_csv, review))
     return 0
 
 
@@ -230,6 +313,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_serve(args)
     if args.command == "app":
         return _cmd_app()
+    if args.command == "sweep":
+        return _cmd_sweep(args)
+    if args.command == "aggregate":
+        return _cmd_aggregate(args)
     return _cmd_list(args)
 
 

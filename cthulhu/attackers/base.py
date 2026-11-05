@@ -55,6 +55,8 @@ class AttackMove:
     prompt: str
     tactic: str = ""
     done: bool = False          # the attacker concedes, no further ideas
+    category: str = ""          # corpus category, empty for a model-written move
+    vector: str = ""            # corpus attack id, empty for a model-written move
 
 
 @dataclass
@@ -71,6 +73,9 @@ class Turn:
     response: str
     blocked: bool = False       # the guardrail refused to send it
     leaked: bool = False        # deterministic success signal (canary or marker)
+    error: bool = False         # the target call failed, so there is no reply to score
+    filtered: bool = False      # the output stage redacted or withheld the reply
+    raw_leaked: bool = False    # the model's own reply held a leak, before any output filtering
     note: str = ""
 
 

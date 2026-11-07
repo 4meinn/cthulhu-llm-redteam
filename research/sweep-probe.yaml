@@ -1,0 +1,14 @@
+# Part B: does jb-002 leak from an unguarded campaign after a context with no winners in it?
+# Needs out/research/probe-corpus, made by research/make_probe_corpus.py from the results of part A.
+# 4 cells x 10 repeats = 40 runs.
+name: research-b-probe
+base: base-probe.yaml
+out: out/research/probe
+repeats: 10
+workers: 1
+grid:
+  target: [ollama:qwen3:8b]
+  guardrail: [none, input, output, both]
+  strategy: [corpus]
+  objective: [leak_canary]
+  mode: [campaign]

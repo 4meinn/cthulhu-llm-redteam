@@ -1,0 +1,13 @@
+# Part C: a search for leaks the output filter cannot recognise. Only the output stages, every reply
+# judged. The point is the review file, not the rates. 4 cells x 3 repeats = 12 runs.
+name: research-c-derived-leaks
+base: base-c.yaml
+out: out/research/c
+repeats: 3
+workers: 1
+grid:
+  target: [ollama:qwen3:8b]
+  guardrail: [output, both]
+  strategy: [corpus]
+  objective: [leak_canary]
+  mode: [isolated, campaign]

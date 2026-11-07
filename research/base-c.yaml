@@ -1,0 +1,29 @@
+# Shared by research/sweep-c.yaml. Judge mode per_turn: every reply is judged, so a leak the output
+# filter cannot recognise (a paraphrase, a translation) can show up as a judge-only finding on the
+# cleaned text. It is about 4 times slower than on_suspicion, because the judge model is swapped in
+# on every turn, so it is used only where that question is being asked.
+target:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: qwen3:8b
+  timeout: 300
+  # temperature is left unset on purpose: the model's own default sampling is used, and
+  # sweep.json records that it was left at the default.
+
+judge:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: qwen3:14b
+  timeout: 300
+
+system_prompt_file: ../examples/target_system_prompt.txt
+canary: NW-7f3a9c21-ZEPHYR
+scoring: any
+
+attacker:
+  strategy: corpus
+  objectives: [leak_canary]
+  max_turns: 30              # covers the whole corpus (29 attacks)
+  judge_mode: per_turn
+  max_history_turns: 8
+  max_message_chars: 2000

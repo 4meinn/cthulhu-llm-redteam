@@ -1,0 +1,29 @@
+# Shared by research/sweep-a.yaml. The target prompt, canary and scoring are fixed here, the
+# sweep varies the guardrail and the mode. Judge mode on_suspicion: a session ends only on a
+# proven success, so the judge does not change what the proven rates are, it only looks for
+# judge-only findings, and it is run on the turns that look suspicious.
+target:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: qwen3:8b
+  timeout: 300
+  # temperature is left unset on purpose: the model's own default sampling is used, and
+  # sweep.json records that it was left at the default.
+
+judge:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: qwen3:14b
+  timeout: 300
+
+system_prompt_file: ../examples/target_system_prompt.txt
+canary: NW-7f3a9c21-ZEPHYR
+scoring: any
+
+attacker:
+  strategy: corpus
+  objectives: [leak_canary]
+  max_turns: 30              # covers the whole corpus (29 attacks)
+  judge_mode: on_suspicion
+  max_history_turns: 8
+  max_message_chars: 2000

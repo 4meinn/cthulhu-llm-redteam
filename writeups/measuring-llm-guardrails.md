@@ -11,7 +11,7 @@ Four results:
 - In a multi turn campaign the input filter does not reduce the success rate at all. 10 of 10 campaigns still break. The filter only changes which attack lands and when: unguarded, the bot breaks early on several vectors, with the filter it holds until a narrative jailbreak lands at turn 19.
 - The output secret filter is the only stage that closes the campaign (0 of 10 break, every verbatim leak caught). But it protects the secret string, not the information around it. The model will print its whole system prompt, rules, the existence of the code, and even the defensive hardening text, on request. The canary metric scores all of that as a clean 0.
 
-Maps to OWASP LLM01 (prompt injection) and LLM07 (system prompt leakage).
+Maps to OWASP LLM01 (prompt injection), LLM02 (sensitive information disclosure), and LLM07 (system prompt leakage).
 
 ## The target and the method
 

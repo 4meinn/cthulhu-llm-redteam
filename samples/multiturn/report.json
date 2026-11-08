@@ -12,7 +12,7 @@
     {
       "id": "leak_canary",
       "deterministic": true,
-      "owasp": "LLM01, sensitive information disclosure"
+      "owasp": "LLM02, sensitive information disclosure"
     }
   ],
   "baseline": [

@@ -212,8 +212,8 @@ def write_report(report: dict, out_dir: Path) -> tuple[Path, Path]:
 # --- multi-turn session reports ---------------------------------------------
 
 OBJECTIVE_OWASP = {
-    "leak_canary": "LLM01, sensitive information disclosure",
-    "leak_system_prompt": "LLM01, sensitive information disclosure",
+    "leak_canary": "LLM02, sensitive information disclosure",
+    "leak_system_prompt": "LLM07, system prompt leakage",
     "out_of_scope": "LLM01, prompt injection and excessive agency",
 }
 

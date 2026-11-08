@@ -87,6 +87,7 @@ For comparison, the offline mock target (a deliberately vulnerable stand-in) byp
 ## Writeups
 
 - [Breaking a guarded support bot](writeups/narrative-jailbreak-vs-pattern-guardrail.md): a story-framed jailbreak gets a canary past a pattern-based input guardrail on a local qwen3:8b target.
+- [Measuring LLM guardrails](writeups/measuring-llm-guardrails.md): attack success rate across none, input, output and both guardrail modes on a local qwen3:8b target; the secret filter protects the code but not the system prompt (OWASP LLM01, LLM02, LLM07).
 
 ## Install
 

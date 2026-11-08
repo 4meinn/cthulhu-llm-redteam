@@ -28,6 +28,7 @@ from ..sweep import (
     Grid, SweepConfig, SweepMismatch, SweepResult, describe, expand, make_plan, pending_runs,
     run_sweep, _slug,
 )
+from .inline import inline_config
 from .manager import RunManager
 
 DEFAULT_ROOT = Path("out") / "sweeps"
@@ -54,15 +55,6 @@ def sweep_slug(name: str) -> str:
     if not slug:
         raise ValueError("the sweep needs a name with letters or digits in it")
     return slug
-
-
-def _inline_base(base: RunConfig) -> RunConfig:
-    """The base config with every file path taken out. The system prompt has to be given inline."""
-    if base.system_prompt_text is None:
-        raise ValueError("the sweep needs the system prompt as text; files are not read over HTTP")
-    if base.attacker is None:
-        raise ValueError("config has no 'attacker' section")
-    return base.model_copy(update={"corpus_dir": None, "system_prompt_file": None, "output_dir": Path("out")})
 
 
 class Sweep:
@@ -113,7 +105,7 @@ class SweepManager:
 
     def _build(self, req: SweepRequest):
         slug = sweep_slug(req.name)
-        base = _inline_base(req.base)
+        base = inline_config(req.base)
         config = SweepConfig(name=slug, base=Path("inline"), out=self.root / slug,
                              repeats=req.repeats, workers=req.workers, grid=req.grid)
         cells = expand(config, base)

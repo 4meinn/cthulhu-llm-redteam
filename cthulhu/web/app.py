@@ -20,6 +20,7 @@ from ..export import to_csv, to_json
 from ..report import session_report_to_markdown
 from ..results import records_from_report
 from ..sweep import SweepMismatch
+from .inline import inline_config
 from .manager import RunManager
 from .sweeps import SweepBusy, SweepManager, SweepRequest
 
@@ -84,7 +85,7 @@ def cancel_all_runs():
 @app.post("/runs")
 def start_run(cfg: RunConfig):
     try:
-        run_id = manager.start(cfg)
+        run_id = manager.start(inline_config(cfg))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"run_id": run_id}

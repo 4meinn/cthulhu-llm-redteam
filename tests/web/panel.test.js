@@ -67,4 +67,34 @@ assert.ok(P.turnNote({ violated: true, proven: false }).indexOf("not counted as 
 assert.strictEqual(P.turnNote({ violated: true, proven: true }), "");
 assert.strictEqual(P.turnNote({}), "");
 
+// phase totals: blocked and error turns are counted apart, proven and judge only are not mixed
+const turns = [
+  { blocked: true },
+  { error: true },
+  { violated: true, proven: true, leaked: true },
+  { violated: true, proven: false },
+  { filtered: true, raw_leaked: true },
+  { filtered: true, raw_leaked: false },
+  {},
+];
+assert.deepStrictEqual(P.phaseTotals([{ turns: turns }, { turns: [{ filtered: true, raw_leaked: true }] }]),
+  { turns: 8, blocked: 1, errors: 1, proven: 1, judgeOnly: 1, caught: 2, changed: 1 });
+assert.deepStrictEqual(P.phaseTotals(null),
+  { turns: 0, blocked: 0, errors: 0, proven: 0, judgeOnly: 0, caught: 0, changed: 0 });
+assert.strictEqual(P.phaseTotals([{ turns: [{ error: true, violated: true, proven: true }] }]).proven, 0);
+
+// the turns to review, with the text, numbered from 1
+const session = { objective: { id: "leak_canary" }, review_turns: [2, 9], turns: [{ a: 1 }, { a: 2 }] };
+const items = P.reviewItems([{ name: "guarded", sessions: [session] }, { name: "baseline", sessions: [] }]);
+assert.strictEqual(items.length, 1);
+assert.deepStrictEqual([items[0].phase, items[0].objective, items[0].turn, items[0].data.a], ["guarded", "leak_canary", 2, 2]);
+assert.deepStrictEqual(P.reviewItems(undefined), []);
+
+// the output note shows for the two modes that have an output stage
+assert.strictEqual(P.hasOutputStage("none"), false);
+assert.strictEqual(P.hasOutputStage("input"), false);
+assert.strictEqual(P.hasOutputStage("output"), true);
+assert.strictEqual(P.hasOutputStage("both"), true);
+assert.ok(P.OUTPUT_NOTE.indexOf("by construction") >= 0 && P.OUTPUT_NOTE.indexOf("not mean the target is safe") >= 0);
+
 console.log("panel tests ok");

@@ -375,7 +375,7 @@ function sessionsByObjective(sessions) {
 
 function metLabel(session) {
   if (!session || !session.success) return "held";
-  return (session.needs_review ? "met (review)" : "met") + " @ turn " + session.success_turn;
+  return (session.needs_review ? "judge only (review)" : "proven") + " @ turn " + session.success_turn;
 }
 
 function renderReport(report) {
@@ -393,6 +393,9 @@ function renderReport(report) {
   ];
   if (meta.judge_agreement != null) metaLine.push("agreement " + Math.round(meta.judge_agreement * 100) + "%");
   body.append(el("p", { cls: "meta", text: metaLine.join("  |  ") }));
+  if (guarded && Panel.hasOutputStage(Panel.modeFromMeta(meta))) {
+    body.append(el("p", { cls: "warn", text: Panel.OUTPUT_NOTE }));
+  }
 
   // objectives table
   const bMap = sessionsByObjective(report.baseline);
@@ -418,6 +421,24 @@ function renderReport(report) {
   const phases = [["baseline", report.baseline]];
   if (guarded) phases.push(["guarded", report.guarded]);
 
+  // turn counts per phase: proven and judge only apart, caught and error never folded into held
+  body.append(el("h2", { text: "Turns" }));
+  const totals = el("table");
+  const totalsHead = el("tr");
+  ["Phase", "Turns", "Blocked", "Errors", "Proven", "Judge only", "Caught", "Reply changed"].forEach(function (h) {
+    totalsHead.append(el("th", { text: h }));
+  });
+  totals.append(totalsHead);
+  phases.forEach(function (p) {
+    const t = Panel.phaseTotals(p[1]);
+    const tr = el("tr");
+    [p[0], t.turns, t.blocked, t.errors, t.proven, t.judgeOnly, t.caught, t.changed].forEach(function (v) {
+      tr.append(el("td", { text: v }));
+    });
+    totals.append(tr);
+  });
+  body.append(totals);
+
   // what broke
   body.append(el("h2", { text: "What broke and how" }));
   let broke = false;
@@ -433,17 +454,18 @@ function renderReport(report) {
   if (!broke) body.append(el("p", { cls: "muted", text: "No objective was met." }));
 
   // needs review
-  const review = [];
-  phases.forEach(function (p) {
-    (p[1] || []).forEach(function (s) { if (s.needs_review) review.push([p[0], s]); });
-  });
+  const review = Panel.reviewItems(phases.map(function (p) { return { name: p[0], sessions: p[1] }; }));
   body.append(el("h2", { text: "Needs review (judge only)" }));
   if (review.length === 0) {
-    body.append(el("p", { cls: "muted", text: "None. Every success had a deterministic signal." }));
+    body.append(el("p", { cls: "muted", text: "None. No turn was flagged by the judge alone." }));
   } else {
+    body.append(el("p", { cls: "muted", text:
+      "The judge flagged these turns and no deterministic check did. They are not counted as proven. " +
+      "Read each reply: it may be a leak the rules cannot see, or a judge reading too much into the text. " +
+      "The reply is what the application returned, after any output filter." }));
     review.forEach(function (r) {
-      body.append(el("div", { cls: "review-line", text:
-        r[1].objective.id + " (" + r[0] + ", turn " + r[1].success_turn + ")" }));
+      body.append(el("h3", { text: r.objective + " (" + r.phase + ", turn " + r.turn + ")" }));
+      body.append(turnRow("t" + r.turn, r.data, r.data.note));
     });
   }
 

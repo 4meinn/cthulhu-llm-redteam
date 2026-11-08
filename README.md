@@ -57,7 +57,7 @@ A filter scored against the exact prompts it was built for will always look perf
 |---|---|---|
 | `direct_injection` | Override the system prompt outright | LLM01 |
 | `jailbreak` | Role-play and "unrestricted mode" framings | LLM01 |
-| `system_prompt_leak` | Make the target repeat its own instructions | LLM01, sensitive information disclosure |
+| `system_prompt_leak` | Make the target repeat its own instructions | LLM01, system prompt leakage (LLM07) |
 | `indirect_injection` | Instructions hidden inside data the bot processes | LLM01 |
 | `encoding_evasion` | Base64, hex, ROT13, reversed and leetspeak payloads | input-filter evasion |
 

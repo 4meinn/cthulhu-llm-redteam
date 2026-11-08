@@ -130,6 +130,17 @@ h2, h3, .meta, #report-body { overflow-wrap: anywhere; }
 
 /* ---- live board ---------------------------------------------------------- */
 
+.mode-field { margin: 9px 0 4px; }
+.mode-title { font-size: 12px; color: var(--muted); }
+.mode-picker { display: flex; margin-top: 5px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.mode-picker label {
+  flex: 1; margin: 0; text-align: center; cursor: pointer; padding: 7px 4px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.4px; color: var(--muted); background: var(--surface);
+}
+.mode-picker label + label { border-left: 1px solid var(--border); }
+.mode-picker input { position: absolute; opacity: 0; width: 0; height: 0; }
+.mode-picker label.on { background: linear-gradient(180deg, var(--primary), var(--crimson-deep)); color: #fff; }
+.mode-picker label:focus-within { outline: 2px solid var(--primary-bright); outline-offset: -2px; }
 .segment { margin-left: auto; display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
 .segment button {
   border-radius: 0; background: var(--surface); color: var(--muted);

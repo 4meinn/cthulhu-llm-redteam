@@ -5,6 +5,7 @@
 // jailbroken target can return markup, and the tool must never run it.
 
 const Layout = window.CthulhuLayout;
+const Panel = window.CthulhuPanel;
 
 function el(tag, opts) {
   opts = opts || {};
@@ -39,19 +40,52 @@ function showView(name) {
 
 // --- setup -----------------------------------------------------------------
 
+// The guardrail mode is four radio buttons drawn as one segmented control. The
+// labels and the one line explanations come from panel.js, so there is one list.
+function buildModePicker(form) {
+  const picker = qs("#mode-picker");
+  Panel.MODES.forEach(function (m) {
+    const label = el("label", { text: m.label });
+    const input = el("input");
+    input.type = "radio";
+    input.name = "guardrail_mode";
+    input.value = m.value;
+    input.checked = m.value === Panel.DEFAULT_MODE;
+    label.prepend(input);
+    picker.append(label);
+  });
+  syncModePicker(form);
+}
+
+function selectedMode(form) {
+  const checked = form.querySelector('input[name="guardrail_mode"]:checked');
+  return checked ? checked.value : Panel.DEFAULT_MODE;
+}
+
+function syncModePicker(form) {
+  const mode = selectedMode(form);
+  qs("#mode-picker").querySelectorAll("label").forEach(function (l) {
+    l.classList.toggle("on", l.firstChild.value === mode);
+  });
+  const info = Panel.MODES.filter(function (m) { return m.value === mode; })[0];
+  qs("#mode-help").textContent = info ? info.text : "";
+}
+
 function buildConfig(form) {
   const val = function (name) { return form.elements[name].value; };
   const objectives = Array.prototype.map.call(
     form.querySelectorAll('input[name="objective"]:checked'), function (i) { return i.value; });
   const canary = val("canary").trim();
   const label = val("label").trim();
+  const gr = Panel.modeConfig(selectedMode(form));
   return {
     target: { provider: val("target_provider"), base_url: val("target_base_url"), model: val("target_model") },
     judge: { provider: val("judge_provider"), base_url: val("judge_base_url"), model: val("judge_model") },
     system_prompt_text: val("system_prompt"),
     canary: canary || null,
     label: label || null,
-    guardrail: form.elements.guardrail.checked,
+    guardrail: gr.guardrail,
+    guardrail_mode: gr.guardrail_mode,
     scoring: "any",
     attacker: {
       strategy: val("attacker_strategy"),
@@ -146,7 +180,7 @@ function describeMeta(meta) {
   const bits = [];
   if (meta.target) bits.push(meta.target);
   if (meta.judge) bits.push("judge " + meta.judge);
-  bits.push(meta.guardrail ? "guardrail on" : "guardrail off");
+  bits.push("guardrail " + Panel.modeFromMeta(meta));
   return bits.join("  |  ");
 }
 
@@ -359,7 +393,7 @@ function renderReport(report) {
     "judge " + (meta.judge || "none"),
     "scoring " + (meta.scoring || "any"),
     "judge mode " + (meta.judge_mode || "?"),
-    "guardrail " + (guarded ? "on" : "off"),
+    "guardrail " + Panel.modeFromMeta(meta),
   ];
   if (meta.judge_agreement != null) metaLine.push("agreement " + Math.round(meta.judge_agreement * 100) + "%");
   body.append(el("p", { cls: "meta", text: metaLine.join("  |  ") }));
@@ -449,7 +483,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const form = qs("#run-form");
   form.addEventListener("submit", submitRun);
-  form.addEventListener("change", function () { updateOosWarning(form); });
+  buildModePicker(form);
+  form.addEventListener("change", function () { updateOosWarning(form); syncModePicker(form); });
   updateOosWarning(form);
 
   qs("#new-run-btn").addEventListener("click", function () { showView("setup"); });

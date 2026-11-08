@@ -102,7 +102,11 @@ Rules:
         </div>
         <p id="oos-warning" class="warn hidden">out_of_scope has no deterministic signal; set judge mode to per_turn or successes may be missed.</p>
         <label>Max turns <input type="number" name="max_turns" value="6" min="1" max="30"></label>
-        <label class="inline"><input type="checkbox" name="guardrail" checked> Guardrail on (runs baseline and guarded)</label>
+        <div class="mode-field">
+          <span class="mode-title">Guardrail</span>
+          <div id="mode-picker" class="mode-picker" role="radiogroup" aria-label="Guardrail mode"></div>
+          <p id="mode-help" class="hint"></p>
+        </div>
       </fieldset>
       <p id="setup-error" class="error hidden"></p>
       <button type="submit">Start run</button>
@@ -139,6 +143,7 @@ Rules:
 </main>
 
 <script src="/static/layout.js"></script>
+<script src="/static/panel.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

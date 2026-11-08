@@ -5,11 +5,20 @@ from pathlib import Path
 import pytest
 
 NODE = shutil.which("node")
-SCRIPT = Path(__file__).parent / "web" / "layout.test.js"
+WEB_TESTS = Path(__file__).parent / "web"
+
+
+def _run(script: str, expect: str) -> None:
+    result = subprocess.run([NODE, str(WEB_TESTS / script)], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert expect in result.stdout
 
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
 def test_layout_logic_in_node():
-    result = subprocess.run([NODE, str(SCRIPT)], capture_output=True, text=True, timeout=60)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "layout tests ok" in result.stdout
+    _run("layout.test.js", "layout tests ok")
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_panel_logic_in_node():
+    _run("panel.test.js", "panel tests ok")

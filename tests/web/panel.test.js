@@ -35,4 +35,36 @@ P.MODES.forEach(function (m) {
   assert.strictEqual(P.phaseCount(m.value), cfg.guardrail ? 2 : 1);
 });
 
+// turn badges: the same precedence the result files use
+function main(turn) { return P.turnBadges(turn)[0]; }
+assert.deepStrictEqual(main({ blocked: true }), { text: "blocked by guardrail", cls: "safe" });
+assert.strictEqual(main({ error: true, violated: false }).cls, "error");
+assert.strictEqual(main({ blocked: true, error: true }).cls, "safe");
+assert.deepStrictEqual(main({ violated: true, proven: true, leaked: true }), { text: "objective met", cls: "finding" });
+assert.deepStrictEqual(main({ violated: true, proven: false, leaked: false }), { text: "judge only, review", cls: "review" });
+assert.strictEqual(main({ violated: true, leaked: true }).text, "objective met");     // no proven field: the old meaning
+assert.strictEqual(main({ violated: true, leaked: false }).text, "judge only, review");
+assert.strictEqual(main({ violated: false, leaked: true }).text, "canary leaked");
+assert.strictEqual(main({ filtered: true, raw_leaked: true }).text, "caught by output filter");
+assert.strictEqual(main({ filtered: true, raw_leaked: false }).text, "reply changed by filter");
+assert.strictEqual(main({}).text, "held");
+assert.strictEqual(main({ error: false, violated: false, leaked: false, filtered: false }).text, "held");
+
+// judge only never looks like proven, and an error never looks like held
+assert.notStrictEqual(main({ violated: true, proven: false }).cls, main({ violated: true, proven: true }).cls);
+assert.notStrictEqual(main({ error: true }).text, main({}).text);
+
+// a caught leak keeps its badge next to a higher ranked outcome
+const both = P.turnBadges({ filtered: true, raw_leaked: true, violated: true, proven: false });
+assert.deepStrictEqual(both.map(function (b) { return b.cls; }), ["review", "caught"]);
+assert.strictEqual(P.turnBadges({ filtered: true, raw_leaked: true }).length, 1);
+assert.strictEqual(P.turnBadges({ blocked: true, filtered: true }).length, 1);
+assert.strictEqual(P.turnBadges({ error: true, filtered: true }).length, 1);
+
+// notes
+assert.ok(P.turnNote({ error: true }).indexOf("not scored") >= 0);
+assert.ok(P.turnNote({ violated: true, proven: false }).indexOf("not counted as proven") >= 0);
+assert.strictEqual(P.turnNote({ violated: true, proven: true }), "");
+assert.strictEqual(P.turnNote({}), "");
+
 console.log("panel tests ok");

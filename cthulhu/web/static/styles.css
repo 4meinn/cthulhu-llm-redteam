@@ -110,6 +110,12 @@ button:disabled { opacity: 0.4; cursor: default; filter: none; }
 .tag.finding { background: var(--finding); color: #fff; }
 .tag.safe { background: var(--safe); color: #06281f; }
 .tag.muted { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.tag { margin-right: 6px; }
+.tag.review { background: #d9a24b; color: #2a1b04; }
+.tag.caught { background: transparent; color: var(--safe); border: 1px solid var(--safe); }
+.tag.changed { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
+.tag.error { background: transparent; color: var(--finding); border: 1px solid var(--finding); }
+.hint-line { margin: 3px 0 0 96px; color: var(--muted); font-size: 11px; font-style: italic; }
 .reason, .note { margin: 3px 0 0 96px; white-space: pre-wrap; color: var(--muted); }
 .reason { color: #d9a24b; }
 .error { color: var(--finding); }

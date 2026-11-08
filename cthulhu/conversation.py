@@ -190,7 +190,7 @@ def run_session(
         convo.append({"role": "assistant", "content": response})
         emit("turn", turn=i, tactic=move.tactic, blocked=False, sent=sent, response=response,
              leaked=det.violated, violated=verdict.violated, judged=jv is not None,
-             filtered=filtered, raw_leaked=raw_leaked,
+             filtered=filtered, raw_leaked=raw_leaked, error=bool(error),
              proven=verdict.violated and verdict.deterministic.violated,
              reason=(jv.reason if jv else ""))
 

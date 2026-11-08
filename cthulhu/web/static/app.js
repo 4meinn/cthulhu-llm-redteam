@@ -147,13 +147,6 @@ function dotClass(status) {
   return status === "running" ? "run" : status;
 }
 
-function outcome(ev) {
-  if (ev.blocked) return { text: "blocked by guardrail", cls: "safe" };
-  if (ev.violated) return { text: "objective met", cls: "finding" };
-  if (ev.leaked) return { text: "canary leaked", cls: "finding" };
-  return { text: "held", cls: "muted" };
-}
-
 function message(who, text, cls) {
   const row = el("div", { cls: "msg" + (cls ? " " + cls : "") });
   row.append(el("span", { cls: "who", text: who + ": " }));
@@ -163,15 +156,18 @@ function message(who, text, cls) {
 
 // One exchange, used by the live feed and by the report transcripts.
 function turnRow(label, t, reason) {
-  const o = outcome(t);
   const row = el("div", { cls: "turn" });
   const head = el("div", { cls: "turn-head" });
   head.append(el("span", { cls: "tnum", text: label }));
   head.append(el("span", { cls: "tactic", text: t.tactic || "" }));
-  head.append(el("span", { cls: "tag " + o.cls, text: o.text }));
+  Panel.turnBadges(t).forEach(function (b) {
+    head.append(el("span", { cls: "tag " + b.cls, text: b.text }));
+  });
   row.append(head);
   if (t.sent) row.append(message("atk", t.sent, ""));
   if (!t.blocked && t.response) row.append(message("bot", t.response, "reply"));
+  const hint = Panel.turnNote(t);
+  if (hint) row.append(el("div", { cls: "hint-line", text: hint }));
   if (reason) row.append(el("div", { cls: "reason", text: reason }));
   return row;
 }

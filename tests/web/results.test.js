@@ -131,6 +131,12 @@ assert.strictEqual(R.partialBanner({ partial: false, runs: 4 }, "done"), "");
 assert.ok(R.partialBanner({ partial: true, runs: 7 }, "running").indexOf("7 finished run(s)") >= 0);
 assert.ok(R.partialBanner({ partial: false, runs: 7 }, "running").indexOf("Partial data") === 0);
 assert.strictEqual(R.partialBanner(null, "running"), "");
+assert.strictEqual(R.partialBanner({ partial: false, runs: 8 }, "done", 8), "");
+assert.ok(R.partialBanner({ partial: false, runs: 5 }, "cancelled", 8).indexOf("Incomplete: 5 of 8 run(s) finished, the sweep was cancelled") === 0);
+assert.ok(R.partialBanner({ partial: false, runs: 5 }, "idle", 8).indexOf("Incomplete: 5 of 8") === 0);
+assert.ok(R.partialBanner({ partial: false, runs: 5 }, "error", 8).indexOf("stopped with an error") > 0);
+assert.ok(R.partialBanner({ partial: false, runs: 5 }, "cancelled", 8).indexOf("not run") > 0);
+assert.strictEqual(R.partialBanner({ partial: false, runs: 5 }, "done", 0), "");
 
 // the selector label
 assert.strictEqual(R.sweepOption({ id: "night-1", live: false, status: "idle", done: 80, total: 80 }), "night-1 (on disk, 80 of 80 runs)");

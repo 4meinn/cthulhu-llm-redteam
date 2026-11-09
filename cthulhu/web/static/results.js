@@ -172,11 +172,18 @@
   }
 
   // A line for a sweep that is not finished: the tables read the finished runs only.
-  function partialBanner(data, status) {
+  // A running sweep is partial and still moving. A cancelled, failed or older sweep with fewer
+  // runs on disk than its grid is incomplete: it will not change, but it is not the whole grid.
+  function partialBanner(data, status, total) {
     if (!data) return "";
     if (data.partial || status === "running") {
       return "Partial data: " + data.runs + " finished run(s) so far. The tables update as runs finish, and the " +
              "numbers can still move.";
+    }
+    if (total > 0 && data.runs < total) {
+      return "Incomplete: " + data.runs + " of " + total + " run(s) finished" +
+             (status === "cancelled" ? ", the sweep was cancelled" : (status === "error" ? ", the sweep stopped with an error" : "")) +
+             ". Cells with fewer repeats than planned have a wider interval, and a cell with no run says not run.";
     }
     return "";
   }

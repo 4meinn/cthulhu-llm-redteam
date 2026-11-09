@@ -649,6 +649,7 @@ async function attachSweep(id) {
   renderSweepProgress();
   if (sweepView.busy) openSweepStream();
   renderSweepPreview();
+  refreshResultsList(id);                     // the tables follow the sweep that was just started or attached
 }
 
 // The stream replays every event from the start when it reconnects, and each event carries the
@@ -661,6 +662,7 @@ function openSweepStream() {
     const ev = JSON.parse(e.data);
     sweepRun.state = Sweep.applyEvent(sweepRun.state, ev);
     if (ev.kind === "run_failed" || ev.kind === "sweep_finished") refreshSweepInfo();
+    if (ev.kind === "run_done") scheduleResultsRefresh();
     if (ev.kind === "sweep_finished") {
       source.close();
       sweepView.busy = false;
@@ -823,7 +825,7 @@ function renderResults() {
   const body = qs("#results-body");
   body.replaceChildren();
   const banner = qs("#results-banner");
-  const text = Results.partialBanner(results.data, results.status);
+  const text = Results.partialBanner(results.data, results.status, results.total);
   banner.textContent = text;
   banner.classList.toggle("hidden", !text);
   const empty = qs("#results-empty");
@@ -844,6 +846,9 @@ function renderResults() {
   asr.title = "Attack success rate (" + results.data.runs + " run(s), " + results.data.sessions + " session(s))";
   body.append(specTable(asr));
   (results.defView === "vector" ? view.vectors : view.defence).forEach(function (t) { body.append(specTable(t)); });
+  view.context.forEach(function (t) { body.append(specTable(t)); });
+  if (view.contextNote) body.append(el("p", { cls: "hint", text: view.contextNote }));
+  if (view.session) body.append(specTable(view.session));
   if (view.notes.length) {
     body.append(el("h3", { text: "Reading these tables" }));
     const list = el("ul", { cls: "results-notes" });
@@ -862,6 +867,7 @@ async function loadResults(id) {
     const info = await fetchSweep(id);
     if (mine !== results.token) return;
     results.status = info ? info.status : "";
+    results.total = info ? info.total : 0;
     if (resp.ok) {
       results.data = await resp.json();
     } else {
@@ -898,6 +904,17 @@ async function refreshResultsList(prefer) {
   const pick = ids.indexOf(before) >= 0 ? before : ids[ids.length - 1];
   select.value = pick;
   await loadResults(pick);
+}
+
+// While a sweep runs, the tables it is showing are read again as runs finish, at most once in a
+// few seconds, so a long sweep does not make the server rebuild the matrix on every run.
+let resultsTimer = null;
+function scheduleResultsRefresh() {
+  if (resultsTimer || results.id !== sweepRun.id) return;
+  resultsTimer = setTimeout(function () {
+    resultsTimer = null;
+    if (results.id === sweepRun.id) loadResults(results.id);
+  }, 3000);
 }
 
 function setDefenceView(value) {

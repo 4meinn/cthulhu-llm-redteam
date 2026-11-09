@@ -52,6 +52,11 @@ h1 {
 .warn-box { border: 1px solid #d9a24b; background: rgba(217, 162, 75, 0.10); color: #f0d9aa; }
 .alert-box { border: 2px solid var(--finding); background: rgba(214, 48, 79, 0.16); color: #ffd6dd; }
 .alert-box b, .warn-box b { letter-spacing: 0.6px; text-transform: uppercase; font-size: 11px; margin-right: 6px; }
+.warn-box.persist { margin-top: 4px; }
+#sweep-form .setup-col > button[type="submit"] { width: auto; align-self: center; padding: 8px 44px; }
+.sweep-progress { margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 16px 14px; background: var(--surface); }
+.sweep-progress .progress { max-width: 520px; }
+.sweep-failed-line { color: var(--finding); font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
 .preview p { margin: 5px 0; font-size: 13px; }
 .preview .big { font-size: 14px; font-weight: 600; color: var(--text); }
 .preview .busy { color: var(--muted); }

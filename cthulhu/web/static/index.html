@@ -164,9 +164,25 @@ Rules:
               <input type="number" name="sweep_spc" value="13" min="1" step="1">
             </label>
           </fieldset>
+          <p id="sweep-start-error" class="error hidden"></p>
+          <button id="sweep-start" type="submit" disabled>Start sweep</button>
         </div>
       </div>
     </form>
+    <p class="warn-box persist"><b>Where it runs</b>The sweep runs in the server, not in this page. Closing the panel does not stop it, and opening the panel again shows where it is. If the <code>cthulhu serve</code> process stops, the sweep stops too. What has finished stays on disk, and starting a sweep with the same name and settings carries on where it left off.</p>
+    <p id="sweep-last" class="hint hidden"></p>
+    <section id="sweep-progress" class="sweep-progress hidden">
+      <h2 id="sweep-progress-title"></h2>
+      <p id="sweep-progress-line" class="meta"></p>
+      <div class="progress"><i id="sweep-progress-fill"></i></div>
+      <p id="sweep-active" class="meta"></p>
+      <p id="sweep-last-run" class="meta"></p>
+      <div id="sweep-failed"></div>
+      <p id="sweep-result" class="meta"></p>
+      <div class="run-actions">
+        <button id="sweep-cancel" type="button" class="ghost small">Cancel sweep</button>
+      </div>
+    </section>
   </section>
 
   <section id="live" class="view hidden">

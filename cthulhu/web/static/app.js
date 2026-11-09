@@ -549,6 +549,7 @@ function alertBox(kind, text) {
 }
 
 function renderSweepPreview() {
+  qs("#sweep-start").disabled = true;
   const req = sweepRequest();
   const warning = qs("#sweep-setup-warning");
   warning.replaceChildren();
@@ -595,6 +596,154 @@ function renderSweepPreview() {
   box.append(previewLine(plan.state === "resume"
     ? "This name already holds this sweep: it resumes and skips the runs on disk."
     : (plan.state === "different" ? "This name holds a different sweep." : "A new sweep."), "muted"));
+  qs("#sweep-start").disabled = !Sweep.canStart(stop, plan, sweepView.planError, sweepView.busy);
+  if (sweepView.busy) box.append(previewLine("A sweep is running. Only one runs at a time.", "muted"));
+}
+
+// --- running a sweep -------------------------------------------------------
+
+const sweepRun = { id: null, state: null, source: null, retries: 0, failed: {} };
+
+function sweepError(text) {
+  const err = qs("#sweep-start-error");
+  err.textContent = text || "";
+  err.classList.toggle("hidden", !text);
+}
+
+async function startSweep() {
+  sweepError("");
+  const req = sweepRequest();
+  if (!Sweep.canStart(req.setupProblems.concat(req.problems), sweepView.plan, sweepView.planError, sweepView.busy)) return;
+  let resp;
+  try {
+    resp = await fetch("/sweeps", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Sweep.buildRequest(req.setupCfg, req.fields)),
+    });
+  } catch (e) {
+    sweepError("Could not reach the backend.");
+    return;
+  }
+  const body = await resp.json().catch(function () { return {}; });
+  if (!resp.ok) {
+    sweepError("Sweep rejected: " + (typeof body.detail === "string" ? body.detail : resp.status));
+    return;
+  }
+  await attachSweep(body.sweep_id);
+}
+
+async function fetchSweep(id) {
+  const resp = await fetch("/sweeps/" + encodeURIComponent(id));
+  return resp.ok ? await resp.json() : null;
+}
+
+async function attachSweep(id) {
+  const info = await fetchSweep(id);
+  if (!info) return;
+  if (sweepRun.source) sweepRun.source.close();
+  sweepRun.id = id;
+  sweepRun.retries = 0;
+  sweepRun.failed = info.failed || {};
+  sweepRun.state = Sweep.newState(info);
+  sweepView.busy = !Sweep.isTerminal(info.status) && info.live;
+  renderSweepProgress();
+  if (sweepView.busy) openSweepStream();
+  renderSweepPreview();
+}
+
+// The stream replays every event from the start when it reconnects, and each event carries the
+// counters, so a dropped connection rebuilds the state instead of doubling it.
+function openSweepStream() {
+  const id = sweepRun.id;
+  const source = new EventSource("/sweeps/" + encodeURIComponent(id) + "/events");
+  sweepRun.source = source;
+  source.onmessage = function (e) {
+    const ev = JSON.parse(e.data);
+    sweepRun.state = Sweep.applyEvent(sweepRun.state, ev);
+    if (ev.kind === "run_failed" || ev.kind === "sweep_finished") refreshSweepInfo();
+    if (ev.kind === "sweep_finished") {
+      source.close();
+      sweepView.busy = false;
+      scheduleSweepPlan();
+    }
+    renderSweepProgress();
+  };
+  source.onerror = function () {
+    if (Sweep.isTerminal(sweepRun.state.status)) return;
+    source.close();
+    if (sweepRun.retries >= 5) return;
+    sweepRun.retries += 1;
+    sweepRun.state = Object.assign(Sweep.newState({ total: sweepRun.state.total }), { skipped: sweepRun.state.skipped });
+    setTimeout(function () { if (!Sweep.isTerminal(sweepRun.state.status)) openSweepStream(); }, 1500);
+  };
+}
+
+async function refreshSweepInfo() {
+  try {
+    const info = await fetchSweep(sweepRun.id);
+    if (info) { sweepRun.failed = info.failed || {}; renderSweepProgress(); }
+  } catch (e) { /* the next event refreshes it */ }
+}
+
+function renderSweepProgress() {
+  const st = sweepRun.state;
+  const box = qs("#sweep-progress");
+  if (!st) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  qs("#sweep-progress-title").textContent = "Sweep " + sweepRun.id;
+  qs("#sweep-progress-line").textContent = st.status + ": " + st.done + " done, " + st.failed +
+    " failed, " + st.skipped + " already on disk, of " + st.total + " runs";
+  qs("#sweep-progress-fill").style.width = Math.round(Sweep.fraction(st) * 100) + "%";
+  qs("#sweep-active").textContent = st.active.length ? "Running now: " + st.active.join(", ") : "";
+  qs("#sweep-last-run").textContent = st.last ? "Last: " + st.last : "";
+  const failed = qs("#sweep-failed");
+  failed.replaceChildren();
+  Object.keys(sweepRun.failed).forEach(function (id) {
+    failed.append(el("div", { cls: "sweep-failed-line", text: id + ": " + sweepRun.failed[id] }));
+  });
+  const terminal = Sweep.isTerminal(st.status);
+  qs("#sweep-cancel").classList.toggle("hidden", terminal);
+  const folder = "out/sweeps/" + sweepRun.id;
+  const result = {
+    done: "Finished. Every run is a file under " + folder + "/runs. The tables in the panel come in a later " +
+          "step; until then the command line reads this folder: cthulhu aggregate " + folder,
+    cancelled: "Cancelled. The runs that finished stay on disk. Start a sweep with the same name and settings to carry on.",
+    error: "The sweep stopped with an error. The runs that finished stay on disk.",
+  };
+  qs("#sweep-result").textContent = terminal ? (result[st.status] || "") : "";
+}
+
+async function cancelSweep() {
+  if (!sweepRun.id) return;
+  qs("#sweep-result").textContent = "Cancelling. The run in progress stops, finished runs stay on disk.";
+  await fetch("/sweeps/" + encodeURIComponent(sweepRun.id) + "/cancel", { method: "POST" });
+}
+
+// On opening the panel: follow a sweep that is running, or show the last one.
+async function restoreSweep() {
+  let list;
+  try {
+    const resp = await fetch("/sweeps");
+    if (!resp.ok) return;
+    list = (await resp.json()).sweeps || [];
+  } catch (e) { return; }
+  const live = list.filter(function (s) { return s.live; });
+  const running = live.filter(function (s) { return !Sweep.isTerminal(s.status); })[0];
+  if (running) {
+    await attachSweep(running.id);
+    showView("sweep");
+    scheduleSweepPlan();
+    return;
+  }
+  const last = list.slice().sort(function (a, b) {
+    return String(b.started || b.created || "").localeCompare(String(a.started || a.created || ""));
+  })[0];
+  if (last) {
+    const line = qs("#sweep-last");
+    line.textContent = "Last sweep: " + last.id + ", " + last.done + " of " + last.total + " runs on disk" +
+      (last.live ? " (" + last.status + ")" : "") + ".";
+    line.classList.remove("hidden");
+  }
 }
 
 async function refreshSweepPlan() {
@@ -680,7 +829,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const sweepForm = qs("#sweep-form");
   sweepForm.addEventListener("input", scheduleSweepPlan);
   sweepForm.addEventListener("change", scheduleSweepPlan);
-  sweepForm.addEventListener("submit", function (ev) { ev.preventDefault(); });
+  sweepForm.addEventListener("submit", function (ev) { ev.preventDefault(); startSweep(); });
+  qs("#sweep-cancel").addEventListener("click", cancelSweep);
   qs("#sweep-tab").addEventListener("click", openSweepView);
   qs("#sweep-tab").addEventListener("keydown", function (ev) {
     if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openSweepView(); }
@@ -688,5 +838,5 @@ document.addEventListener("DOMContentLoaded", function () {
   qs("#sweep-back").addEventListener("click", function () { showView("setup"); });
 
   renderBoard();
-  restoreBoard();
+  restoreBoard().then(restoreSweep);
 });

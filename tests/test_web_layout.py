@@ -22,3 +22,8 @@ def test_layout_logic_in_node():
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
 def test_panel_logic_in_node():
     _run("panel.test.js", "panel tests ok")
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_sweep_logic_in_node():
+    _run("sweep.test.js", "sweep tests ok")

@@ -142,4 +142,22 @@ assert.strictEqual(R.partialBanner({ partial: false, runs: 5 }, "done", 0), "");
 assert.strictEqual(R.sweepOption({ id: "night-1", live: false, status: "idle", done: 80, total: 80 }), "night-1 (on disk, 80 of 80 runs)");
 assert.strictEqual(R.sweepOption({ id: "x", live: true, status: "running", done: 3, total: 9 }), "x (running, 3 of 9 runs)");
 
+// the judge only turns: a heading, the frame, never proven
+const item = { n: 2, run_id: "output-campaign-r001", objective: "leak_canary", turn: 24, vector: "spl-001", target: "ollama:qwen3:8b",
+               guardrail: "output", mode: "campaign", strategy: "corpus", raw_leak: true };
+assert.strictEqual(R.reviewHeading(item), "2. output-campaign-r001, leak_canary, turn 24 (spl-001)");
+assert.strictEqual(R.reviewMeta(item), "target ollama:qwen3:8b, guardrail output, campaign, corpus");
+const badges = R.reviewBadges(item);
+assert.strictEqual(badges[0].text, "judge flagged, no deterministic signal");
+assert.ok(badges.every(function (b) { return b.text.toLowerCase().indexOf("proven") < 0 || b.text.indexOf("deterministic") >= 0; }));
+assert.strictEqual(badges[1].cls, "caught");
+assert.strictEqual(R.reviewBadges(Object.assign({}, item, { raw_leak: false })).length, 1);
+assert.strictEqual(R.reviewShown(new Array(60).fill(item)).shown.length, 50);
+assert.strictEqual(R.reviewShown(new Array(60).fill(item)).hidden, 10);
+assert.deepStrictEqual(R.reviewShown(null), { shown: [], hidden: 0 });
+assert.deepStrictEqual(R.exportLinks("night-1", true).map(function (l) { return l.name; }), ["asr.csv", "matrix.csv", "matrix.md", "review.md"]);
+assert.deepStrictEqual(R.exportLinks("night-1", false).map(function (l) { return l.name; }), ["asr.csv", "matrix.csv", "matrix.md"]);
+assert.strictEqual(R.exportLinks("night-1", true)[0].href, "/sweeps/night-1/export/asr.csv");
+assert.strictEqual(R.exportLinks("a b", false)[0].href, "/sweeps/a%20b/export/asr.csv");
+
 console.log("results tests ok");

@@ -20,10 +20,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from ..asr import asr_section, merge_results, result_files
+from ..asr import (
+    REVIEW_NOTE, asr_section, merge_results, result_files, review_items, review_markdown, section_csv,
+)
 from ..config import RunConfig
 from ..matrix import build_matrices
-from ..matrix_render import matrix_json
+from ..matrix_render import matrix_csv, matrix_json, matrix_markdown
 from ..sweep import (
     Grid, SweepConfig, SweepMismatch, SweepResult, describe, expand, make_plan, pending_runs,
     run_sweep, _slug,
@@ -235,17 +237,50 @@ class SweepManager:
             sweep._new.wait(timeout=0.5)
             sweep._new.clear()
 
-    def matrix(self, sweep_id: str) -> dict | None:
-        """The ASR rows and the matrices from the result files so far, or None when there are none.
-
-        It reads the finished runs only, so while a sweep is running this is partial."""
-        info = self.get(sweep_id)
-        if info is None:
+    def records(self, sweep_id: str) -> list | None:
+        """Every session record in the sweep's finished runs, or None when there is no such sweep
+        or no finished run yet. It reads files, so it is current for a sweep that is still running."""
+        if self.get(sweep_id) is None:
             return None
         try:
             records, _ = merge_results(result_files([self.root / sweep_id / "runs"]))
         except ValueError:
             return None
+        return records
+
+    def matrix(self, sweep_id: str) -> dict | None:
+        """The ASR rows and the matrices from the result files so far, or None when there are none.
+
+        It reads the finished runs only, so while a sweep is running this is partial."""
+        records = self.records(sweep_id)
+        if records is None:
+            return None
+        info = self.get(sweep_id)
         return {"id": sweep_id, "runs": len({r.run_id for r in records}), "sessions": len(records),
                 "partial": info["status"] == "running", "asr": asr_section(records),
                 "matrix": matrix_json(build_matrices(records))}
+
+    def review(self, sweep_id: str) -> dict | None:
+        """The judge-only turns with their words. They are not proven: no deterministic check
+        fired on any of them. The text is model output, so it travels as data."""
+        records = self.records(sweep_id)
+        if records is None:
+            return None
+        items = review_items(records)
+        return {"id": sweep_id, "count": len(items), "items": items, "note": REVIEW_NOTE}
+
+    def export(self, sweep_id: str, kind: str) -> str | None:
+        """asr.csv, matrix.csv, matrix.md or review.md for the finished runs, built by the same
+        writers the command line uses. None when there is nothing to export, or the kind is unknown."""
+        records = self.records(sweep_id)
+        if records is None:
+            return None
+        if kind == "asr.csv":
+            return section_csv(asr_section(records))
+        if kind == "matrix.csv":
+            return matrix_csv(build_matrices(records))
+        if kind == "matrix.md":
+            return matrix_markdown(build_matrices(records))
+        if kind == "review.md":
+            return review_markdown(records)
+        return None

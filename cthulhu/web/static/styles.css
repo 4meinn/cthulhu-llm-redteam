@@ -75,6 +75,17 @@ h1 {
 .results-table td.apart { font-weight: 600; }
 .results-table td.overlap { color: var(--muted); font-style: italic; }
 .results-table tr.low td { background: rgba(255, 255, 255, 0.015); }
+.results-exports a { margin-left: 10px; }
+.review-card { border: 1px solid var(--border); border-left: 3px solid #d9a24b; border-radius: 7px; padding: 8px 12px 10px; margin: 10px 0; background: var(--surface); }
+.review-card h4 { margin: 0 0 3px; font-size: 13px; overflow-wrap: anywhere; }
+.review-card .meta { font-size: 12px; margin: 2px 0; }
+.review-card .judge-says { color: #d9a24b; font-size: 12px; margin: 4px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.review-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.7px; margin: 8px 0 2px; }
+.review-pre {
+  margin: 0; padding: 8px 10px; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+  font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.45;
+}
 .results-notes { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .preview p { margin: 5px 0; font-size: 13px; }
 .preview .big { font-size: 14px; font-weight: 600; color: var(--text); }

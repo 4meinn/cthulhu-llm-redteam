@@ -188,6 +188,42 @@
     return "";
   }
 
+  // --- the judge only turns --------------------------------------------------
+  // A judge only turn is one the judge flagged and no deterministic check did. It is never proven.
+  // The words are model output: the page shows them as text in a pre element and nothing here
+  // builds markup from them.
+  const REVIEW_CAP = 50;
+
+  function reviewHeading(item) {
+    return item.n + ". " + (item.run_id || "run") + ", " + item.objective + ", turn " + item.turn + " (" + item.vector + ")";
+  }
+
+  function reviewMeta(item) {
+    return "target " + item.target + ", guardrail " + item.guardrail + ", " + item.mode + ", " + item.strategy;
+  }
+
+  // The frame every case is read in. judge only is its own badge; a leak the output filter
+  // caught in the same turn is named, because that turn also counts as caught.
+  function reviewBadges(item) {
+    const badges = [{ text: "judge flagged, no deterministic signal", cls: "review" }];
+    if (item.raw_leak) badges.push({ text: "model reply held the secret before the filter", cls: "caught" });
+    return badges;
+  }
+
+  function reviewShown(items, cap) {
+    const limit = cap || REVIEW_CAP;
+    return { shown: (items || []).slice(0, limit), hidden: Math.max((items || []).length - limit, 0) };
+  }
+
+  const EXPORTS = ["asr.csv", "matrix.csv", "matrix.md", "review.md"];
+
+  // The files the command line writes, for a sweep. review.md only when there is something to review.
+  function exportLinks(id, hasReview) {
+    return EXPORTS.filter(function (name) { return name !== "review.md" || hasReview; }).map(function (name) {
+      return { name: name, href: "/sweeps/" + encodeURIComponent(id) + "/export/" + name };
+    });
+  }
+
   function sweepOption(s) {
     const state = s.live ? s.status : "on disk";
     return s.id + " (" + state + ", " + s.done + " of " + s.total + " runs)";
@@ -198,6 +234,8 @@
     pct: pct, fraction: fraction, ciText: ciText, lowN: lowN, configLabel: configLabel, sortRows: sortRows,
     asrCells: asrCells, asrTable: asrTable, defenceTable: defenceTable, contextTable: contextTable,
     sessionTable: sessionTable, matrixView: matrixView, partialBanner: partialBanner, sweepOption: sweepOption,
+    REVIEW_CAP: REVIEW_CAP, reviewHeading: reviewHeading, reviewMeta: reviewMeta, reviewBadges: reviewBadges,
+    reviewShown: reviewShown, exportLinks: exportLinks,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

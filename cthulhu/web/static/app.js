@@ -821,9 +821,63 @@ function specTable(spec) {
   return wrap;
 }
 
+// The judge only turns. Each is a case to read: the judge flagged it, no deterministic check
+// did, and it is never counted as proven. The message and the reply are model output and go in
+// a pre element as text. Nothing here is parsed as markdown or markup.
+function renderReview(body) {
+  body.append(el("h3", { text: "Needs review (judge only)" }));
+  const data = results.review;
+  if (!data) {
+    body.append(el("p", { cls: "muted", text: "The review could not be loaded." }));
+    return;
+  }
+  if (data.count === 0) {
+    body.append(el("p", { cls: "muted", text: "None. No turn in this sweep was flagged by the judge alone." }));
+    return;
+  }
+  const box = el("div", { cls: "warn-box" });
+  box.append(el("b", { text: data.count + " turn(s)" }));
+  box.append(document.createTextNode(data.note));
+  body.append(box);
+  const part = Results.reviewShown(data.items);
+  part.shown.forEach(function (item) {
+    const card = el("div", { cls: "review-card" });
+    card.append(el("h4", { text: Results.reviewHeading(item) }));
+    card.append(el("div", { cls: "meta", text: Results.reviewMeta(item) }));
+    const badges = el("div");
+    Results.reviewBadges(item).forEach(function (b) { badges.append(el("span", { cls: "tag " + b.cls, text: b.text })); });
+    card.append(badges);
+    card.append(el("div", { cls: "judge-says", text: "Judge: " + item.judge }));
+    card.append(el("div", { cls: "review-label", text: "Message sent" }));
+    card.append(el("pre", { cls: "review-pre", text: item.sent }));
+    card.append(el("div", { cls: "review-label", text: "Reply, as the application returned it" }));
+    card.append(el("pre", { cls: "review-pre", text: item.response }));
+    if (item.cut) card.append(el("p", { cls: "hint", text: "Cut for display. The whole text is in the results file." }));
+    body.append(card);
+  });
+  if (part.hidden > 0) {
+    body.append(el("p", { cls: "hint", text: part.hidden + " more turn(s) are not shown here. review.md has all of them." }));
+  }
+}
+
+function renderExports() {
+  const box = qs("#results-exports");
+  box.replaceChildren();
+  if (!results.id || !results.data) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  box.append(document.createTextNode("Download:"));
+  Results.exportLinks(results.id, !!(results.review && results.review.count > 0)).forEach(function (l) {
+    const a = el("a", { text: l.name });
+    a.href = l.href;
+    a.setAttribute("download", "");
+    box.append(a);
+  });
+}
+
 function renderResults() {
   const body = qs("#results-body");
   body.replaceChildren();
+  renderExports();
   const banner = qs("#results-banner");
   const text = Results.partialBanner(results.data, results.status, results.total);
   banner.textContent = text;
@@ -849,6 +903,7 @@ function renderResults() {
   view.context.forEach(function (t) { body.append(specTable(t)); });
   if (view.contextNote) body.append(el("p", { cls: "hint", text: view.contextNote }));
   if (view.session) body.append(specTable(view.session));
+  renderReview(body);
   if (view.notes.length) {
     body.append(el("h3", { text: "Reading these tables" }));
     const list = el("ul", { cls: "results-notes" });
@@ -870,8 +925,15 @@ async function loadResults(id) {
     results.total = info ? info.total : 0;
     if (resp.ok) {
       results.data = await resp.json();
+      results.review = null;
+      try {
+        const rv = await fetch("/sweeps/" + encodeURIComponent(id) + "/review");
+        if (rv.ok) results.review = await rv.json();
+      } catch (e) { /* the section says it could not be loaded */ }
+      if (mine !== results.token) return;
     } else {
       results.data = null;
+      results.review = null;
       const body = await resp.json().catch(function () { return {}; });
       results.error = resp.status === 409 ? "No finished run in this sweep yet." : "Could not load the results: " + (body.detail || resp.status);
     }

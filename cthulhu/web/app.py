@@ -218,3 +218,37 @@ def sweep_matrix(sweep_id: str):
     if data is None:
         raise HTTPException(status_code=409, detail="no finished run yet")
     return data
+
+
+@app.get("/sweeps/{sweep_id}/review")
+def sweep_review(sweep_id: str):
+    """The judge-only turns with their words. They are data to read, never proven."""
+    _require_sweep(sweep_id)
+    data = sweeps.review(sweep_id)
+    if data is None:
+        raise HTTPException(status_code=409, detail="no finished run yet")
+    return data
+
+
+_EXPORTS = {
+    "asr.csv": "text/csv; charset=utf-8",
+    "matrix.csv": "text/csv; charset=utf-8",
+    "matrix.md": "text/plain; charset=utf-8",
+    "review.md": "text/plain; charset=utf-8",
+}
+
+
+@app.get("/sweeps/{sweep_id}/export/{name}")
+def sweep_export(sweep_id: str, name: str):
+    """asr.csv, matrix.csv, matrix.md and review.md, built by the same writers the command line
+    uses. Served as an attachment and as plain text, so model text in review.md is never rendered."""
+    _require_sweep(sweep_id)
+    if name not in _EXPORTS:
+        raise HTTPException(status_code=404, detail="unknown export")
+    text = sweeps.export(sweep_id, name)
+    if text is None:
+        if name == "review.md" and sweeps.records(sweep_id) is not None:
+            raise HTTPException(status_code=404, detail="nothing to review in this sweep")
+        raise HTTPException(status_code=409, detail="no finished run yet")
+    return PlainTextResponse(text, media_type=_EXPORTS[name], headers={
+        "Content-Disposition": f'attachment; filename="{sweep_id}-{name}"', "X-Content-Type-Options": "nosniff"})

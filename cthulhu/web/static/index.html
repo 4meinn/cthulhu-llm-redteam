@@ -183,6 +183,28 @@ Rules:
         <button id="sweep-cancel" type="button" class="ghost small">Cancel sweep</button>
       </div>
     </section>
+
+    <section id="sweep-results" class="results">
+      <h2>Results</h2>
+      <div class="results-bar">
+        <label class="inline">Sweep <select id="results-select"></select></label>
+        <label class="inline">ASR by
+          <select id="results-level">
+            <option value="config">configuration</option>
+            <option value="category">category</option>
+            <option value="vector">vector</option>
+          </select>
+        </label>
+        <div id="results-view" class="segment" role="group" aria-label="Defence matrix view">
+          <button type="button" data-view="category" aria-pressed="true">Category</button>
+          <button type="button" data-view="vector" aria-pressed="false">Vector</button>
+        </div>
+        <button id="results-reload" type="button" class="ghost small">Reload</button>
+      </div>
+      <p id="results-banner" class="warn-box hidden"></p>
+      <p id="results-empty" class="muted"></p>
+      <div id="results-body"></div>
+    </section>
   </section>
 
   <section id="live" class="view hidden">
@@ -215,6 +237,7 @@ Rules:
 <script src="/static/layout.js"></script>
 <script src="/static/panel.js"></script>
 <script src="/static/sweep.js"></script>
+<script src="/static/results.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

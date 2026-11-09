@@ -57,6 +57,25 @@ h1 {
 .sweep-progress { margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 16px 14px; background: var(--surface); }
 .sweep-progress .progress { max-width: 520px; }
 .sweep-failed-line { color: var(--finding); font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
+.results { margin-top: 26px; }
+.results-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin: 6px 0 10px; }
+.results-bar select { width: auto; }
+.results-bar .segment { margin-left: 0; }
+.table-wrap { overflow-x: auto; margin: 6px 0 18px; }
+.table-wrap h3 { margin: 14px 0 6px; font-size: 14px; }
+.results-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.results-table th, .results-table td { padding: 5px 9px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.results-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.results-table td.label { font-weight: 600; overflow-wrap: anywhere; }
+.results-table td.muted { color: var(--muted); }
+.results-table td.low { color: var(--muted); }
+.results-table td.caught { color: var(--safe); font-weight: 600; }
+.results-table td.judge { color: #d9a24b; font-weight: 600; }
+.results-table td.err { color: var(--finding); font-weight: 600; }
+.results-table td.apart { font-weight: 600; }
+.results-table td.overlap { color: var(--muted); font-style: italic; }
+.results-table tr.low td { background: rgba(255, 255, 255, 0.015); }
+.results-notes { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .preview p { margin: 5px 0; font-size: 13px; }
 .preview .big { font-size: 14px; font-weight: 600; color: var(--text); }
 .preview .busy { color: var(--muted); }

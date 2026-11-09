@@ -665,6 +665,7 @@ function openSweepStream() {
       source.close();
       sweepView.busy = false;
       scheduleSweepPlan();
+      refreshResultsList(sweepRun.id);
     }
     renderSweepProgress();
   };
@@ -733,6 +734,7 @@ async function restoreSweep() {
     await attachSweep(running.id);
     showView("sweep");
     scheduleSweepPlan();
+    refreshResultsList(running.id);
     return;
   }
   const last = list.slice().sort(function (a, b) {
@@ -791,6 +793,119 @@ function scheduleSweepPlan() {
 function openSweepView() {
   showView("sweep");
   scheduleSweepPlan();
+  refreshResultsList();
+}
+
+// --- results ---------------------------------------------------------------
+
+// The tables come from GET /sweeps/{id}/matrix. results.js lays them out as {head, rows} and
+// this draws them with textContent. The numbers are the server's, none is computed here.
+const Results = window.CthulhuResults;
+const results = { id: null, data: null, status: "", defView: "category", token: 0 };
+
+function specTable(spec) {
+  const wrap = el("div", { cls: "table-wrap" });
+  if (spec.title) wrap.append(el("h3", { text: spec.title }));
+  const table = el("table", { cls: "results-table" });
+  const head = el("tr");
+  spec.head.forEach(function (h) { head.append(el("th", { text: h })); });
+  table.append(head);
+  spec.rows.forEach(function (row) {
+    const tr = el("tr", { cls: row.cls || "" });
+    row.cells.forEach(function (c) { tr.append(el("td", { cls: c.cls || "", text: c.text })); });
+    table.append(tr);
+  });
+  wrap.append(table);
+  return wrap;
+}
+
+function renderResults() {
+  const body = qs("#results-body");
+  body.replaceChildren();
+  const banner = qs("#results-banner");
+  const text = Results.partialBanner(results.data, results.status);
+  banner.textContent = text;
+  banner.classList.toggle("hidden", !text);
+  const empty = qs("#results-empty");
+  if (!results.id) { empty.textContent = "No sweep yet. Start one above, or pick a finished one."; return; }
+  if (!results.data) { empty.textContent = results.error || "No finished run in this sweep yet."; return; }
+  const view = Results.matrixView(results.data);
+  empty.textContent = view.empty ? "These runs hold nothing to compare yet." : "";
+  const level = qs("#results-level").value;
+
+  // The reading note for an output stage comes first, so a zero is read after its reason.
+  if (view.outputBox) {
+    const box = el("div", { cls: "warn-box" });
+    box.append(el("b", { text: "Read this first" }));
+    box.append(document.createTextNode(view.outputBox));
+    body.append(box);
+  }
+  const asr = Results.asrTable(results.data.asr, level);
+  asr.title = "Attack success rate (" + results.data.runs + " run(s), " + results.data.sessions + " session(s))";
+  body.append(specTable(asr));
+  (results.defView === "vector" ? view.vectors : view.defence).forEach(function (t) { body.append(specTable(t)); });
+  if (view.notes.length) {
+    body.append(el("h3", { text: "Reading these tables" }));
+    const list = el("ul", { cls: "results-notes" });
+    view.notes.forEach(function (n) { list.append(el("li", { text: n })); });
+    body.append(list);
+  }
+}
+
+async function loadResults(id) {
+  const mine = ++results.token;
+  results.id = id || null;
+  results.error = "";
+  if (!id) { results.data = null; renderResults(); return; }
+  try {
+    const resp = await fetch("/sweeps/" + encodeURIComponent(id) + "/matrix");
+    const info = await fetchSweep(id);
+    if (mine !== results.token) return;
+    results.status = info ? info.status : "";
+    if (resp.ok) {
+      results.data = await resp.json();
+    } else {
+      results.data = null;
+      const body = await resp.json().catch(function () { return {}; });
+      results.error = resp.status === 409 ? "No finished run in this sweep yet." : "Could not load the results: " + (body.detail || resp.status);
+    }
+  } catch (e) {
+    if (mine !== results.token) return;
+    results.data = null;
+    results.error = "Could not reach the backend.";
+  }
+  renderResults();
+}
+
+// The selector lists every sweep the server knows, live or on disk. A sweep that is running is
+// the default, then the one the panel is following, then the newest.
+async function refreshResultsList(prefer) {
+  let list = [];
+  try {
+    const resp = await fetch("/sweeps");
+    if (resp.ok) list = (await resp.json()).sweeps || [];
+  } catch (e) { /* the empty list says so */ }
+  const select = qs("#results-select");
+  const before = prefer || results.id || sweepRun.id;
+  select.replaceChildren();
+  list.forEach(function (s) {
+    const option = el("option", { text: Results.sweepOption(s) });
+    option.value = s.id;
+    select.append(option);
+  });
+  if (list.length === 0) { loadResults(null); return; }
+  const ids = list.map(function (s) { return s.id; });
+  const pick = ids.indexOf(before) >= 0 ? before : ids[ids.length - 1];
+  select.value = pick;
+  await loadResults(pick);
+}
+
+function setDefenceView(value) {
+  results.defView = value === "vector" ? "vector" : "category";
+  document.querySelectorAll("#results-view button").forEach(function (b) {
+    b.setAttribute("aria-pressed", String(b.dataset.view === results.defView));
+  });
+  renderResults();
 }
 
 // --- wiring ----------------------------------------------------------------
@@ -836,6 +951,13 @@ document.addEventListener("DOMContentLoaded", function () {
     if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openSweepView(); }
   });
   qs("#sweep-back").addEventListener("click", function () { showView("setup"); });
+
+  qs("#results-select").addEventListener("change", function (ev) { loadResults(ev.target.value); });
+  qs("#results-level").addEventListener("change", renderResults);
+  qs("#results-reload").addEventListener("click", function () { refreshResultsList(results.id); });
+  document.querySelectorAll("#results-view button").forEach(function (b) {
+    b.addEventListener("click", function () { setDefenceView(b.dataset.view); });
+  });
 
   renderBoard();
   restoreBoard().then(restoreSweep);

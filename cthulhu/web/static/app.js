@@ -6,6 +6,7 @@
 
 const Layout = window.CthulhuLayout;
 const Panel = window.CthulhuPanel;
+const Sweep = window.CthulhuSweep;
 
 function el(tag, opts) {
   opts = opts || {};
@@ -21,7 +22,7 @@ function safeStorage() {
   try { return window.localStorage; } catch (e) { return null; }
 }
 
-const views = { setup: qs("#setup"), live: qs("#live"), report: qs("#report") };
+const views = { setup: qs("#setup"), live: qs("#live"), report: qs("#report"), sweep: qs("#sweep") };
 
 // The live board: every run keeps its own stream, its own transcript and its own
 // list entry. The layout is only a class on the board, so switching between the
@@ -483,6 +484,166 @@ function renderReport(report) {
   });
 }
 
+// --- sweep -----------------------------------------------------------------
+
+// The Sweep view takes the Setup form as its base (prompt, canary, judge, attacker) and adds a
+// grid on top. The preview asks the server for the plan on every change, after a short pause,
+// and only the newest answer is drawn.
+const sweepView = { plan: null, planError: "", token: 0, timer: null, busy: false };
+
+function sweepChecks(containerId, name, values, checked) {
+  const box = qs("#" + containerId);
+  values.forEach(function (v) {
+    const label = el("label", { text: v });
+    const input = el("input");
+    input.type = "checkbox";
+    input.name = name;
+    input.value = v;
+    input.checked = checked.indexOf(v) >= 0;
+    label.prepend(input);
+    box.append(label);
+  });
+}
+
+function buildSweepForm() {
+  sweepChecks("sweep-guardrails", "sweep_guardrail", Sweep.GUARDRAILS, Sweep.GUARDRAILS);
+  sweepChecks("sweep-modes", "sweep_mode", Sweep.MODES, Sweep.MODES);
+  sweepChecks("sweep-objectives", "sweep_objective", Sweep.OBJECTIVES, ["leak_canary"]);
+}
+
+function readSweepFields(form) {
+  const checked = function (name) {
+    return Array.prototype.map.call(form.querySelectorAll('input[name="' + name + '"]:checked'),
+      function (i) { return i.value; });
+  };
+  return {
+    name: form.elements.sweep_name.value,
+    guardrails: checked("sweep_guardrail"),
+    modes: checked("sweep_mode"),
+    objectives: checked("sweep_objective"),
+    targets: form.elements.sweep_targets.value,
+    strategy: form.elements.sweep_strategy.value,
+    repeats: parseInt(form.elements.sweep_repeats.value, 10),
+    max_turns: parseInt(form.elements.sweep_max_turns.value, 10),
+    workers: parseInt(form.elements.sweep_workers.value, 10),
+    judge_mode: form.elements.sweep_judge_mode.value,
+  };
+}
+
+function sweepRequest() {
+  const fields = readSweepFields(qs("#sweep-form"));
+  const setupCfg = buildConfig(qs("#run-form"));
+  return { fields: fields, setupCfg: setupCfg,
+           setupProblems: Sweep.setupProblems(setupCfg), problems: Sweep.fieldProblems(fields) };
+}
+
+function previewLine(text, cls) {
+  return el("p", { cls: cls || "", text: text });
+}
+
+function alertBox(kind, text) {
+  const box = el("div", { cls: kind === "alert" ? "alert-box" : "warn-box" });
+  box.append(el("b", { text: kind === "alert" ? "Warning" : "Note" }));
+  box.append(document.createTextNode(text));
+  return box;
+}
+
+function renderSweepPreview() {
+  const req = sweepRequest();
+  const warning = qs("#sweep-setup-warning");
+  warning.replaceChildren();
+  if (req.setupProblems.length > 0) {
+    warning.append(el("b", { text: "Setup is not ready. " }));
+    warning.append(document.createTextNode(
+      "Go back to Setup and fix: " + req.setupProblems.join("; ") + "."));
+    warning.classList.remove("hidden");
+  } else {
+    warning.classList.add("hidden");
+  }
+  const cfg = req.setupCfg;
+  qs("#sweep-base").textContent = "Base from Setup: target " + cfg.target.provider + ":" + cfg.target.model +
+    ", judge " + (cfg.judge.provider + ":" + cfg.judge.model) + ", canary " + (cfg.canary || "none");
+
+  const box = qs("#sweep-preview");
+  box.replaceChildren();
+  const stop = req.setupProblems.concat(req.problems);
+  if (stop.length > 0) {
+    stop.forEach(function (p) { box.append(previewLine(p, "error")); });
+    return;
+  }
+  if (sweepView.planError) {
+    box.append(alertBox("alert", "The server did not accept this sweep: " + sweepView.planError));
+    return;
+  }
+  const plan = sweepView.plan;
+  if (!plan) {
+    box.append(previewLine("Working out the cost...", "busy"));
+    return;
+  }
+  // the warnings come first and are hard to miss: a turn limit below the corpus size means the
+  // later vectors are never tried, and the sweep would read as clean when it never tried them
+  Sweep.classifyWarnings(plan).forEach(function (w) {
+    box.append(alertBox(w.severe ? "alert" : "note", w.text));
+  });
+  box.append(previewLine(Sweep.planSummary(plan), "big"));
+  const spc = parseFloat(qs("#sweep-form").elements.sweep_spc.value);
+  const secs = Sweep.estimateSeconds(plan.max_target_calls, spc);
+  if (secs != null) {
+    box.append(previewLine("Rough time, at most: " + Sweep.formatDuration(secs) + " (" + plan.max_target_calls +
+      " calls x " + spc + " s). Real time depends on your hardware and on how early sessions end.", "muted"));
+  }
+  box.append(previewLine(plan.state === "resume"
+    ? "This name already holds this sweep: it resumes and skips the runs on disk."
+    : (plan.state === "different" ? "This name holds a different sweep." : "A new sweep."), "muted"));
+}
+
+async function refreshSweepPlan() {
+  const req = sweepRequest();
+  const mine = ++sweepView.token;
+  if (req.setupProblems.length > 0 || req.problems.length > 0) {
+    sweepView.plan = null;
+    sweepView.planError = "";
+    renderSweepPreview();
+    return;
+  }
+  renderSweepPreview();
+  try {
+    const resp = await fetch("/sweeps/plan", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Sweep.buildRequest(req.setupCfg, req.fields)),
+    });
+    const body = await resp.json().catch(function () { return {}; });
+    if (mine !== sweepView.token) return;
+    if (resp.ok) {
+      sweepView.plan = body;
+      sweepView.planError = "";
+    } else {
+      sweepView.plan = null;
+      const detail = body.detail;
+      sweepView.planError = typeof detail === "string" ? detail
+        : (detail ? "the request is not valid (" + resp.status + ")" : "status " + resp.status);
+    }
+  } catch (e) {
+    if (mine !== sweepView.token) return;
+    sweepView.plan = null;
+    sweepView.planError = "could not reach the backend";
+  }
+  renderSweepPreview();
+}
+
+function scheduleSweepPlan() {
+  sweepView.plan = null;
+  sweepView.planError = "";
+  clearTimeout(sweepView.timer);
+  sweepView.timer = setTimeout(refreshSweepPlan, 350);
+  renderSweepPreview();
+}
+
+function openSweepView() {
+  showView("sweep");
+  scheduleSweepPlan();
+}
+
 // --- wiring ----------------------------------------------------------------
 
 async function restoreBoard() {
@@ -514,6 +675,17 @@ document.addEventListener("DOMContentLoaded", function () {
   });
   qs("#back-to-board").addEventListener("click", function () { showView("live"); });
   qs("#back-to-setup").addEventListener("click", function () { showView("setup"); });
+
+  buildSweepForm();
+  const sweepForm = qs("#sweep-form");
+  sweepForm.addEventListener("input", scheduleSweepPlan);
+  sweepForm.addEventListener("change", scheduleSweepPlan);
+  sweepForm.addEventListener("submit", function (ev) { ev.preventDefault(); });
+  qs("#sweep-tab").addEventListener("click", openSweepView);
+  qs("#sweep-tab").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openSweepView(); }
+  });
+  qs("#sweep-back").addEventListener("click", function () { showView("setup"); });
 
   renderBoard();
   restoreBoard();

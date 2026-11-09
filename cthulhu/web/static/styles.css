@@ -43,6 +43,20 @@ h1 {
 }
 #steps span.active { color: var(--primary-bright); font-weight: 600; border-color: var(--border); background: var(--surface); }
 
+#steps span.tab { cursor: pointer; margin-left: auto; border-color: var(--border); }
+#steps span.tab:hover { color: var(--text); }
+#sweep { max-width: 1240px; margin-left: auto; margin-right: auto; }
+.warn-box, .alert-box {
+  border-radius: 7px; padding: 9px 12px; margin: 0 0 10px; font-size: 13px; line-height: 1.45;
+}
+.warn-box { border: 1px solid #d9a24b; background: rgba(217, 162, 75, 0.10); color: #f0d9aa; }
+.alert-box { border: 2px solid var(--finding); background: rgba(214, 48, 79, 0.16); color: #ffd6dd; }
+.alert-box b, .warn-box b { letter-spacing: 0.6px; text-transform: uppercase; font-size: 11px; margin-right: 6px; }
+.preview p { margin: 5px 0; font-size: 13px; }
+.preview .big { font-size: 14px; font-weight: 600; color: var(--text); }
+.preview .busy { color: var(--muted); }
+#sweep .objectives { margin: 7px 0; }
+
 main { max-width: 1240px; margin: 0 auto; padding: 0 24px 56px; }
 #setup { max-width: 1240px; margin-left: auto; margin-right: auto; }
 #report { max-width: 920px; margin-left: auto; margin-right: auto; }

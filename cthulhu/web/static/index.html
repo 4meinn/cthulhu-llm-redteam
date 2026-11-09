@@ -16,6 +16,7 @@
   <span data-step="setup" class="active">1 Setup</span>
   <span data-step="live">2 Live</span>
   <span data-step="report">3 Report</span>
+  <span data-step="sweep" id="sweep-tab" class="tab" role="button" tabindex="0">Sweep</span>
 </nav>
 
 <main>
@@ -115,6 +116,59 @@ Rules:
     </form>
   </section>
 
+  <section id="sweep" class="view hidden">
+    <div class="bar">
+      <button id="sweep-back" type="button" class="ghost">Back to Setup</button>
+      <span class="meta">A sweep runs a grid of guardrail modes, several times each, with the Setup settings as its base.</span>
+    </div>
+    <div id="sweep-setup-warning" class="warn-box hidden"></div>
+    <form id="sweep-form" autocomplete="off">
+      <div class="setup-grid">
+        <div class="setup-col">
+          <fieldset>
+            <legend>Grid</legend>
+            <label>Name (the results go to out/sweeps/&lt;name&gt;) <input name="sweep_name" value="sweep"></label>
+            <div class="objectives" id="sweep-guardrails"><span>Guardrail modes</span></div>
+            <div class="objectives" id="sweep-modes"><span>Mode</span></div>
+            <div class="objectives" id="sweep-objectives"><span>Objectives</span></div>
+            <label>Targets, one provider:model per line (empty uses the Setup target)
+              <textarea name="sweep_targets" rows="3" placeholder="ollama:qwen3:8b"></textarea>
+            </label>
+          </fieldset>
+        </div>
+        <div class="setup-col">
+          <fieldset>
+            <legend>Runs</legend>
+            <label>Strategy
+              <select name="sweep_strategy">
+                <option value="corpus">corpus</option>
+                <option value="adaptive">adaptive</option>
+              </select>
+            </label>
+            <label>Repeats <input type="number" name="sweep_repeats" value="3" min="1"></label>
+            <label>Max turns <input type="number" name="sweep_max_turns" value="30" min="1" max="60"></label>
+            <label>Workers (1 to 4) <input type="number" name="sweep_workers" value="1" min="1" max="4"></label>
+            <label>Judge mode
+              <select name="sweep_judge_mode">
+                <option value="on_suspicion">on_suspicion</option>
+                <option value="per_turn">per_turn</option>
+                <option value="final">final</option>
+              </select>
+            </label>
+            <p id="sweep-base" class="hint"></p>
+          </fieldset>
+          <fieldset>
+            <legend>Cost preview</legend>
+            <div id="sweep-preview" class="preview"></div>
+            <label>Seconds per target call (rough, only for the time estimate)
+              <input type="number" name="sweep_spc" value="13" min="1" step="1">
+            </label>
+          </fieldset>
+        </div>
+      </div>
+    </form>
+  </section>
+
   <section id="live" class="view hidden">
     <div class="bar">
       <button id="new-run-btn" type="button">+ New run</button>
@@ -144,6 +198,7 @@ Rules:
 
 <script src="/static/layout.js"></script>
 <script src="/static/panel.js"></script>
+<script src="/static/sweep.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

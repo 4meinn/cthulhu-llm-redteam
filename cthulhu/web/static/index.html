@@ -13,8 +13,8 @@
 </header>
 
 <nav id="steps">
-  <span data-step="setup" class="active">1 Setup</span>
-  <span data-step="live">2 Live</span>
+  <span data-step="setup" id="nav-setup" class="active nav" role="button" tabindex="0">1 Setup</span>
+  <span data-step="live" id="nav-live" role="button">2 Live</span>
   <span data-step="report">3 Report</span>
   <span data-step="sweep" id="sweep-tab" class="tab" role="button" tabindex="0">Sweep</span>
 </nav>
@@ -118,7 +118,6 @@ Rules:
 
   <section id="sweep" class="view hidden">
     <div class="bar">
-      <button id="sweep-back" type="button" class="ghost">Back to Setup</button>
       <span class="meta">A sweep runs a grid of guardrail modes, several times each, with the Setup settings as its base.</span>
     </div>
     <div id="sweep-setup-warning" class="warn-box hidden"></div>

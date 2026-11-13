@@ -325,6 +325,9 @@ function updateRun(run) {
 }
 
 function renderBoard() {
+  const navLive = qs("#nav-live");
+  navLive.classList.toggle("nav", order.length > 0);          // Live is a link only once a run exists
+  if (order.length > 0) navLive.setAttribute("tabindex", "0"); else navLive.removeAttribute("tabindex");
   const choice = Layout.chooseLayout(order.length, layoutPref);
   const board = qs("#board");
   board.className = "board layout-" + choice;
@@ -1025,11 +1028,19 @@ document.addEventListener("DOMContentLoaded", function () {
   sweepForm.addEventListener("change", scheduleSweepPlan);
   sweepForm.addEventListener("submit", function (ev) { ev.preventDefault(); startSweep(); });
   qs("#sweep-cancel").addEventListener("click", cancelSweep);
-  qs("#sweep-tab").addEventListener("click", openSweepView);
-  qs("#sweep-tab").addEventListener("keydown", function (ev) {
-    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openSweepView(); }
-  });
-  qs("#sweep-back").addEventListener("click", function () { showView("setup"); });
+  // The steps bar works as a menu. Setup and Sweep can always be opened. Live opens only when
+  // there is a run on the board, as before. Report is still reached from a run, since it needs one.
+  function navTo(id, go, allowed) {
+    const node = qs(id);
+    const open = function () { if (!allowed || allowed()) go(); };
+    node.addEventListener("click", open);
+    node.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); }
+    });
+  }
+  navTo("#nav-setup", function () { showView("setup"); });
+  navTo("#nav-live", function () { showView("live"); }, function () { return order.length > 0; });
+  navTo("#sweep-tab", openSweepView);
 
   qs("#results-select").addEventListener("change", function (ev) { loadResults(ev.target.value); });
   qs("#results-level").addEventListener("change", renderResults);

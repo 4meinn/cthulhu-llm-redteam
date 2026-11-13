@@ -43,7 +43,17 @@ h1 {
 }
 #steps span.active { color: var(--primary-bright); font-weight: 600; border-color: var(--border); background: var(--surface); }
 
-#steps span.tab { cursor: pointer; margin-left: auto; border-color: var(--border); }
+#steps span.nav { cursor: pointer; }
+#steps span.nav:hover { color: var(--text); }
+/* Sweep is a page of its own, not a step: a divider before it, a squarer and larger button. */
+#steps span.tab {
+  position: relative; margin-left: 22px; padding: 5px 18px; border-radius: 4px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.6px;
+  cursor: pointer; border-color: var(--border); background: var(--surface);
+}
+#steps span.tab::before {
+  content: ""; position: absolute; left: -14px; top: 2px; bottom: 2px; width: 1px; background: var(--border);
+}
 #steps span.tab:hover { color: var(--text); }
 #sweep { max-width: 1240px; margin-left: auto; margin-right: auto; }
 .warn-box, .alert-box {
@@ -52,7 +62,7 @@ h1 {
 .warn-box { border: 1px solid #d9a24b; background: rgba(217, 162, 75, 0.10); color: #f0d9aa; }
 .alert-box { border: 2px solid var(--finding); background: rgba(214, 48, 79, 0.16); color: #ffd6dd; }
 .alert-box b, .warn-box b { letter-spacing: 0.6px; text-transform: uppercase; font-size: 11px; margin-right: 6px; }
-.warn-box.persist { margin-top: 4px; }
+.warn-box.persist { margin-top: 20px; }
 #sweep-form .setup-col > button[type="submit"] { width: auto; align-self: center; padding: 8px 44px; }
 .sweep-progress { margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 16px 14px; background: var(--surface); }
 .sweep-progress .progress { max-width: 520px; }
@@ -205,7 +215,7 @@ h2, h3, .meta, #report-body { overflow-wrap: anywhere; }
 
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
 .dot.run { background: var(--primary-bright); box-shadow: 0 0 8px var(--primary); }
-.dot.done { background: var(--safe); }
+.dot.done { background: #2a4a52; }
 .dot.cancelled { background: #d9a24b; }
 .dot.error { background: var(--finding); }
 

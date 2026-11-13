@@ -4,7 +4,7 @@ from pathlib import Path
 from cthulhu.asr import merge_results, result_files
 from cthulhu.matrix import build_matrices
 from cthulhu.matrix_render import LOW_N_MARK, matrix_json, matrix_markdown
-from tests.test_sweep_run import _base, _run, _sweep
+from test_sweep_run import _run, _sweep
 
 SMOKE = Path("tests/fixtures/smoke")
 

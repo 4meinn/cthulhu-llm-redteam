@@ -163,7 +163,10 @@ Rules:
           </label>
           <p id="sweep-base" class="hint"></p>
         </fieldset>
-        <p class="warn-box persist"><b>Where it runs</b>The sweep runs in the server, not in this page. Closing the panel does not stop it, and opening the panel again shows where it is. If the <code>cthulhu serve</code> process stops, the sweep stops too. What has finished stays on disk, and starting a sweep with the same name and settings carries on where it left off.</p>
+        <fieldset class="warn-fieldset">
+          <legend>Where it runs</legend>
+          <p>The sweep runs in the server, not in this page. Closing the panel does not stop it, and opening the panel again shows where it is. If the <code>cthulhu serve</code> process stops, the sweep stops too. What has finished stays on disk, and starting a sweep with the same name and settings carries on where it left off.</p>
+        </fieldset>
       </div>
       <p id="sweep-start-error" class="error hidden"></p>
       <div class="sweep-start"><button id="sweep-start" type="submit" disabled>Start sweep</button></div>

@@ -118,6 +118,7 @@ Rules:
 
   <section id="sweep" class="view hidden">
     <div class="bar">
+      <button id="sweep-back" type="button" class="ghost">Back to Setup</button>
       <span class="meta">A sweep runs a grid of guardrail modes, several times each, with the Setup settings as its base.</span>
     </div>
     <div id="sweep-setup-warning" class="warn-box hidden"></div>
@@ -134,8 +135,6 @@ Rules:
               <textarea name="sweep_targets" rows="3" placeholder="ollama:qwen3:8b"></textarea>
             </label>
           </fieldset>
-        </div>
-        <div class="setup-col">
           <fieldset>
             <legend>Runs</legend>
             <label>Strategy
@@ -156,6 +155,8 @@ Rules:
             </label>
             <p id="sweep-base" class="hint"></p>
           </fieldset>
+        </div>
+        <div class="setup-col">
           <fieldset>
             <legend>Cost preview</legend>
             <div id="sweep-preview" class="preview"></div>
@@ -165,10 +166,10 @@ Rules:
           </fieldset>
           <p id="sweep-start-error" class="error hidden"></p>
           <button id="sweep-start" type="submit" disabled>Start sweep</button>
+          <p class="warn-box persist"><b>Where it runs</b>The sweep runs in the server, not in this page. Closing the panel does not stop it, and opening the panel again shows where it is. If the <code>cthulhu serve</code> process stops, the sweep stops too. What has finished stays on disk, and starting a sweep with the same name and settings carries on where it left off.</p>
         </div>
       </div>
     </form>
-    <p class="warn-box persist"><b>Where it runs</b>The sweep runs in the server, not in this page. Closing the panel does not stop it, and opening the panel again shows where it is. If the <code>cthulhu serve</code> process stops, the sweep stops too. What has finished stays on disk, and starting a sweep with the same name and settings carries on where it left off.</p>
     <p id="sweep-last" class="hint hidden"></p>
     <section id="sweep-progress" class="sweep-progress hidden">
       <h2 id="sweep-progress-title"></h2>

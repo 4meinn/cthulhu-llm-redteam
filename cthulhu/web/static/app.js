@@ -1041,6 +1041,7 @@ document.addEventListener("DOMContentLoaded", function () {
   navTo("#nav-setup", function () { showView("setup"); });
   navTo("#nav-live", function () { showView("live"); }, function () { return order.length > 0; });
   navTo("#sweep-tab", openSweepView);
+  qs("#sweep-back").addEventListener("click", function () { showView("setup"); });
 
   qs("#results-select").addEventListener("change", function (ev) { loadResults(ev.target.value); });
   qs("#results-level").addEventListener("change", renderResults);

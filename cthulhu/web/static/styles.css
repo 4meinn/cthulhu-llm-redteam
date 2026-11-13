@@ -62,8 +62,17 @@ h1 {
 .warn-box { border: 1px solid #d9a24b; background: rgba(217, 162, 75, 0.10); color: #f0d9aa; }
 .alert-box { border: 2px solid var(--finding); background: rgba(214, 48, 79, 0.16); color: #ffd6dd; }
 .alert-box b, .warn-box b { letter-spacing: 0.6px; text-transform: uppercase; font-size: 11px; margin-right: 6px; }
-.warn-box.persist { margin-top: 6px; }      /* with the column gap of 14px, 20px under the Start button */
-#sweep-form .setup-col > button[type="submit"] { width: auto; align-self: center; padding: 8px 44px; }
+/* The sweep form is its own grid, so the Setup columns above are not touched. Two rows, two
+   columns: Grid and Cost preview on top, Runs and the note below. Each row starts at one top
+   edge, so a warning opening in Cost preview moves the row below it, never the edges within a row. */
+.sweep-grid {
+  display: grid; gap: var(--gap); align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.sweep-grid > * { min-width: 0; margin: 0; }
+.sweep-start { display: flex; justify-content: center; margin-top: var(--gap); }
+.sweep-start button { width: auto; padding: 8px 44px; }
+#sweep-form .error { margin: var(--gap) 0 0; text-align: center; }
 .sweep-progress { margin-top: 16px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 16px 14px; background: var(--surface); }
 .sweep-progress .progress { max-width: 520px; }
 .sweep-failed-line { color: var(--finding); font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
@@ -288,7 +297,7 @@ h2, h3, .meta, #report-body { overflow-wrap: anywhere; }
 #report-body .turn-head .tnum { color: var(--muted); }
 
 @media (max-width: 700px) {
-  .setup-grid { grid-template-columns: minmax(0, 1fr); }
+  .setup-grid, .sweep-grid { grid-template-columns: minmax(0, 1fr); }
   /* columns would need more room than the window has, so stack them instead of scrolling */
   .layout-A .run-panels { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: minmax(0, 1fr); overflow-x: visible; }
 }

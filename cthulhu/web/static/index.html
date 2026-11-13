@@ -123,52 +123,50 @@ Rules:
     </div>
     <div id="sweep-setup-warning" class="warn-box hidden"></div>
     <form id="sweep-form" autocomplete="off">
-      <div class="setup-grid">
-        <div class="setup-col">
-          <fieldset>
-            <legend>Grid</legend>
-            <label>Name (the results go to out/sweeps/&lt;name&gt;) <input name="sweep_name" value="sweep"></label>
-            <div class="objectives" id="sweep-guardrails"><span>Guardrail modes</span></div>
-            <div class="objectives" id="sweep-modes"><span>Mode</span></div>
-            <div class="objectives" id="sweep-objectives"><span>Objectives</span></div>
-            <label>Targets, one provider:model per line (empty uses the Setup target)
-              <textarea name="sweep_targets" rows="3" placeholder="ollama:qwen3:8b"></textarea>
-            </label>
-          </fieldset>
-          <fieldset>
-            <legend>Runs</legend>
-            <label>Strategy
-              <select name="sweep_strategy">
-                <option value="corpus">corpus</option>
-                <option value="adaptive">adaptive</option>
-              </select>
-            </label>
-            <label>Repeats <input type="number" name="sweep_repeats" value="3" min="1"></label>
-            <label>Max turns <input type="number" name="sweep_max_turns" value="30" min="1" max="60"></label>
-            <label>Workers (1 to 4) <input type="number" name="sweep_workers" value="1" min="1" max="4"></label>
-            <label>Judge mode
-              <select name="sweep_judge_mode">
-                <option value="on_suspicion">on_suspicion</option>
-                <option value="per_turn">per_turn</option>
-                <option value="final">final</option>
-              </select>
-            </label>
-            <p id="sweep-base" class="hint"></p>
-          </fieldset>
-        </div>
-        <div class="setup-col">
-          <fieldset>
-            <legend>Cost preview</legend>
-            <div id="sweep-preview" class="preview"></div>
-            <label>Seconds per target call (rough, only for the time estimate)
-              <input type="number" name="sweep_spc" value="13" min="1" step="1">
-            </label>
-          </fieldset>
-          <p id="sweep-start-error" class="error hidden"></p>
-          <button id="sweep-start" type="submit" disabled>Start sweep</button>
-          <p class="warn-box persist"><b>Where it runs</b>The sweep runs in the server, not in this page. Closing the panel does not stop it, and opening the panel again shows where it is. If the <code>cthulhu serve</code> process stops, the sweep stops too. What has finished stays on disk, and starting a sweep with the same name and settings carries on where it left off.</p>
-        </div>
+      <!-- Two rows. The top edges of Grid and Cost preview line up, and so do those of Runs and
+           Where it runs, so the cost preview growing a warning does not push the row below it. -->
+      <div class="sweep-grid">
+        <fieldset>
+          <legend>Grid</legend>
+          <label>Name (the results go to out/sweeps/&lt;name&gt;) <input name="sweep_name" value="sweep"></label>
+          <div class="objectives" id="sweep-guardrails"><span>Guardrail modes</span></div>
+          <div class="objectives" id="sweep-modes"><span>Mode</span></div>
+          <div class="objectives" id="sweep-objectives"><span>Objectives</span></div>
+          <label>Targets, one provider:model per line (empty uses the Setup target)
+            <textarea name="sweep_targets" rows="3" placeholder="ollama:qwen3:8b"></textarea>
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Cost preview</legend>
+          <div id="sweep-preview" class="preview"></div>
+          <label>Seconds per target call (rough, only for the time estimate)
+            <input type="number" name="sweep_spc" value="13" min="1" step="1">
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Runs</legend>
+          <label>Strategy
+            <select name="sweep_strategy">
+              <option value="corpus">corpus</option>
+              <option value="adaptive">adaptive</option>
+            </select>
+          </label>
+          <label>Repeats <input type="number" name="sweep_repeats" value="3" min="1"></label>
+          <label>Max turns <input type="number" name="sweep_max_turns" value="30" min="1" max="60"></label>
+          <label>Workers (1 to 4) <input type="number" name="sweep_workers" value="1" min="1" max="4"></label>
+          <label>Judge mode
+            <select name="sweep_judge_mode">
+              <option value="on_suspicion">on_suspicion</option>
+              <option value="per_turn">per_turn</option>
+              <option value="final">final</option>
+            </select>
+          </label>
+          <p id="sweep-base" class="hint"></p>
+        </fieldset>
+        <p class="warn-box persist"><b>Where it runs</b>The sweep runs in the server, not in this page. Closing the panel does not stop it, and opening the panel again shows where it is. If the <code>cthulhu serve</code> process stops, the sweep stops too. What has finished stays on disk, and starting a sweep with the same name and settings carries on where it left off.</p>
       </div>
+      <p id="sweep-start-error" class="error hidden"></p>
+      <div class="sweep-start"><button id="sweep-start" type="submit" disabled>Start sweep</button></div>
     </form>
     <p id="sweep-last" class="hint hidden"></p>
     <section id="sweep-progress" class="sweep-progress hidden">

@@ -70,6 +70,14 @@ h1 {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 .sweep-grid > * { min-width: 0; margin: 0; }
+/* Cost preview fills its cell, so it ends where Grid ends, and its text is a little larger so the
+   box is not left half empty. The preview takes the free height and the seconds field sits at the bottom. */
+.sweep-grid > .sweep-cost { align-self: stretch; display: flex; flex-direction: column; }
+.sweep-cost .preview { flex: 1; }
+.sweep-cost .preview p { font-size: 14px; line-height: 1.5; margin: 8px 0; }
+.sweep-cost .preview .big { font-size: 15px; }
+.sweep-cost .alert-box, .sweep-cost .warn-box { font-size: 14px; line-height: 1.5; padding: 11px 14px; margin: 0 0 12px; }
+.sweep-cost label { font-size: 13px; }
 /* The note under Runs is a fieldset with a legend like the other three boxes, so all four share
    one top structure and their legends sit on the border line. It keeps the amber warning look. */
 .warn-fieldset { border-color: #d9a24b; background: rgba(217, 162, 75, 0.10); color: #f0d9aa; }

@@ -229,3 +229,13 @@ def test_write_aggregate_makes_the_csv_and_the_markdown(tmp_path):
     assert csv_path.name == "asr.csv" and md_path.name == "asr.md"
     assert "## Attack success rate" in md_path.read_text(encoding="utf-8")
     assert "isolated" in md_path.read_text(encoding="utf-8")
+
+
+def test_on_start_reports_each_run_as_it_begins_and_is_optional(tmp_path):
+    sweep = _sweep(tmp_path, repeats=2, guardrail=["none"], mode=["campaign"])
+    started = []
+    _run(sweep, on_start=lambda rid, total: started.append((rid, total)))
+    assert [t for _, t in started] == [2, 2] and [r[-4:] for r, _ in started] == ["r001", "r002"]
+    plain = _sweep(tmp_path / "plain", repeats=1, guardrail=["none"], mode=["campaign"])
+    result, _ = _run(plain)                                   # no callback is fine
+    assert len(result.done) == 1

@@ -19,13 +19,17 @@ from ..config import RunConfig
 from ..export import to_csv, to_json
 from ..report import session_report_to_markdown
 from ..results import records_from_report
+from ..sweep import SweepMismatch
+from .inline import inline_config
 from .manager import RunManager
+from .sweeps import SweepBusy, SweepManager, SweepRequest
 
 ALLOWED_HOSTS = {"localhost", "127.0.0.1"}
 _STATIC = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="Cthulhu", docs_url=None, redoc_url=None)
 manager = RunManager()
+sweeps = SweepManager()
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 
@@ -81,7 +85,7 @@ def cancel_all_runs():
 @app.post("/runs")
 def start_run(cfg: RunConfig):
     try:
-        run_id = manager.start(cfg)
+        run_id = manager.start(inline_config(cfg))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"run_id": run_id}
@@ -142,3 +146,109 @@ def run_results_csv(run_id: str):
         raise HTTPException(status_code=409, detail="report not ready")
     return PlainTextResponse(to_csv(records_from_report(run.report, run.id)),
                              media_type="text/csv; charset=utf-8")
+
+
+# --- sweeps -----------------------------------------------------------------
+# One sweep at a time, run on the server. It goes on if the panel is closed, and what
+# finished is on disk under out/sweeps/<name>, so the same request again carries on.
+
+def _sweep_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, (SweepBusy, SweepMismatch)):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+def _require_sweep(sweep_id: str) -> dict:
+    info = sweeps.get(sweep_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="unknown sweep")
+    return info
+
+
+@app.post("/sweeps/plan")
+def plan_sweep(req: SweepRequest):
+    try:
+        return sweeps.plan(req)
+    except ValueError as exc:
+        raise _sweep_error(exc) from exc
+
+
+@app.get("/sweeps")
+def list_sweeps():
+    return {"sweeps": sweeps.list()}
+
+
+@app.post("/sweeps")
+def start_sweep(req: SweepRequest):
+    try:
+        return {"sweep_id": sweeps.start(req)}
+    except (ValueError, SweepBusy) as exc:
+        raise _sweep_error(exc) from exc
+
+
+@app.get("/sweeps/{sweep_id}")
+def get_sweep(sweep_id: str):
+    return _require_sweep(sweep_id)
+
+
+@app.post("/sweeps/{sweep_id}/cancel")
+def cancel_sweep(sweep_id: str):
+    _require_sweep(sweep_id)
+    return {"cancelled": sweeps.cancel(sweep_id)}
+
+
+@app.get("/sweeps/{sweep_id}/events")
+def sweep_events(sweep_id: str):
+    info = _require_sweep(sweep_id)
+    if not info["live"]:
+        raise HTTPException(status_code=409, detail="this sweep is not running in this server session")
+
+    def stream():
+        for event in sweeps.iter_events(sweep_id):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/sweeps/{sweep_id}/matrix")
+def sweep_matrix(sweep_id: str):
+    _require_sweep(sweep_id)
+    data = sweeps.matrix(sweep_id)
+    if data is None:
+        raise HTTPException(status_code=409, detail="no finished run yet")
+    return data
+
+
+@app.get("/sweeps/{sweep_id}/review")
+def sweep_review(sweep_id: str):
+    """The judge-only turns with their words. They are data to read, never proven."""
+    _require_sweep(sweep_id)
+    data = sweeps.review(sweep_id)
+    if data is None:
+        raise HTTPException(status_code=409, detail="no finished run yet")
+    return data
+
+
+_EXPORTS = {
+    "asr.csv": "text/csv; charset=utf-8",
+    "matrix.csv": "text/csv; charset=utf-8",
+    "matrix.md": "text/plain; charset=utf-8",
+    "review.md": "text/plain; charset=utf-8",
+}
+
+
+@app.get("/sweeps/{sweep_id}/export/{name}")
+def sweep_export(sweep_id: str, name: str):
+    """asr.csv, matrix.csv, matrix.md and review.md, built by the same writers the command line
+    uses. Served as an attachment and as plain text, so model text in review.md is never rendered."""
+    _require_sweep(sweep_id)
+    if name not in _EXPORTS:
+        raise HTTPException(status_code=404, detail="unknown export")
+    text = sweeps.export(sweep_id, name)
+    if text is None:
+        if name == "review.md" and sweeps.records(sweep_id) is not None:
+            raise HTTPException(status_code=404, detail="nothing to review in this sweep")
+        raise HTTPException(status_code=409, detail="no finished run yet")
+    return PlainTextResponse(text, media_type=_EXPORTS[name], headers={
+        "Content-Disposition": f'attachment; filename="{sweep_id}-{name}"', "X-Content-Type-Options": "nosniff"})

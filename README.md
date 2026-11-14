@@ -20,7 +20,7 @@ Prompt injection and jailbreak testing for LLM applications you own. Cthulhu run
 - **Attack categories**: direct injection, jailbreak, system-prompt leak, indirect injection, encoding evasion
 - **Scoring**: deterministic rules plus an LLM judge, recorded separately
 - **License**: MIT
-- **Status**: v0.6.0, MVP, multi-turn adaptive engine, a local web interface with a multi-run board, a desktop app, sweeps with attack success rates and comparison matrices, an output-side guardrail, the MVP validated against a live local model
+- **Status**: v0.7.0, MVP, multi-turn adaptive engine, an output-side guardrail, sweeps with attack success rates and comparison matrices, a desktop app, the MVP validated against a live local model. The web interface now covers all of it in the browser: Setup with four guardrail modes (none, input, output, both), the Live board and the Report, a Sweep page that starts and follows a server-side, resumable sweep, and Results with the ASR table and its Wilson intervals, the comparison matrices, the context and session views, judge-only review and CSV and Markdown downloads, in a dark deep-sea theme
 
 ## Authorized use
 
@@ -36,7 +36,7 @@ The attacker wins when the reply leaks the canary, reveals the system prompt, or
 
 The run is a short pipeline, each stage small enough to test on its own.
 
-1. **Config.** A YAML file names the target endpoint, the judge endpoint, the system-prompt file, the canary, which categories to run, the scoring policy, and whether the guardrail is on.
+1. **Config.** A YAML file names the target endpoint, the judge endpoint, the system-prompt file, the canary, which categories to run, the scoring policy, and which guardrail mode is on (`none`, `input`, `output` or `both`).
 2. **Corpus.** Adversarial prompts live in one YAML file per category and load into a typed model. You can point at your own corpus directory instead of the bundled one.
 3. **Runner.** Each prompt goes to the target with retries. With the guardrail on, it runs before the target ever sees the prompt.
 4. **Scoring.** Two scorers, recorded separately. The deterministic one detects the canary (including leaks with altered spacing or separators), distinctive parts of a multi-part canary given away on their own (a reply that says the code "follows the pattern NW-XXXX-XXXX-ZEPHYR" leaks it), and per-attack marker patterns. The LLM judge receives the target's rules, the attack and the reply, and returns a structured `{"violated": ..., "reason": ...}`. The judge parser is written for real local models: it strips think-blocks and code fences, tolerates trailing commas and single quotes, and falls back to the rules when the output cannot be parsed.
@@ -168,7 +168,7 @@ A jailbreak is a conversation, not a single message, so the attacker is built to
 
 [`samples/multiturn/report.md`](samples/multiturn/report.md) is a run from the mock: the guardrail blocks the direct override, and the attacker still breaks through a turn later with an emotional appeal the filter misses. Each success is marked with its source, and a judge-only success (the judge flags it, the rules do not) is kept under review rather than counted as proven, and it does not end the session: only a proven success, one a deterministic signal backs, ends a conversation. A judge that over-reads one reply should not cut a long conversation short, and a judge-only call is not evidence. The cost is that an objective the canary cannot prove, such as out_of_scope, runs its whole turn budget. out_of_scope has no canary to detect, so it is judged, not pattern-matched; run it with `judge_mode: per_turn`.
 
-**Result files.** Besides `report.json` and `report.md`, `cthulhu attack` writes `results.json` and `results.csv`. The JSON has one entry per session with its turns nested. A turn that only the judge flagged also keeps the message sent, the reply and the judge's reason, so it can be reviewed from the file alone, and `cthulhu aggregate` and `cthulhu sweep` list those turns in `review.md`. No other turn carries model text. The CSV is a flat table with one row per turn, built for grouping by category, vector or config: run, phase, target, judge, strategy, attacker model, guardrail mode (`none` or `input`), objective, `success`, `success_turn`, `ended_reason`, then `turn`, `category`, `vector`, `outcome`, `deterministic_signal` and `judge_verdict`. `outcome` is one of `objective_met`, `leaked` (the canary showed up but the objective was not met), `held`, or `blocked` (the guardrail refused it, so it never reached the model), or `error` (the target call failed, so there was nothing to score). The attacker's free-text tactic stays in the JSON only.
+**Result files.** Besides `report.json` and `report.md`, `cthulhu attack` writes `results.json` and `results.csv`. The JSON has one entry per session with its turns nested. A turn that only the judge flagged also keeps the message sent, the reply and the judge's reason, so it can be reviewed from the file alone, and `cthulhu aggregate` and `cthulhu sweep` list those turns in `review.md`. No other turn carries model text. The CSV is a flat table with one row per turn, built for grouping by category, vector or config: run, phase, target, judge, strategy, attacker model, guardrail mode (`none`, `input`, `output` or `both`), objective, `success`, `success_turn`, `ended_reason`, then `turn`, `category`, `vector`, `outcome`, `deterministic_signal` and `judge_verdict`. `outcome` is one of `objective_met`, `leaked` (the canary showed up but the objective was not met), `held`, or `blocked` (the guardrail refused it, so it never reached the model), or `error` (the target call failed, so there was nothing to score). The attacker's free-text tactic stays in the JSON only.
 
 **Attack success rate.** The report also carries an `asr` section (and the Markdown an "Attack success rate" table), and the CLI writes `asr.csv`. A rate is shown as counts first: `3/19 (15.8%)`, with a Wilson 95% interval, because one run is a small sample and a model is not deterministic. The unit is an attack turn. The headline is the **proven** rate, a success a deterministic signal backs. A success only the judge flagged is **judge only**, reported beside it and never added to it. Blocked turns count in the denominator, since the defence stopped them. A turn whose target call failed is an `error` and is left out of the denominator. Turns the attacker wrote itself are their own group, `model-authored`, apart from the corpus categories. One caveat: a session stops at its first success, so corpus vectors later in the order are tried less often, so compare `n` before comparing rates. The rates are grouped by config (target, guardrail mode, strategy, attacker model), by category, by vector and by objective.
 
@@ -194,7 +194,7 @@ What the application returns is what counts. The cleaned reply is what the score
 cthulhu attack --config examples/config.yaml --guardrail-mode output   # or input, both
 ```
 
-The same choice is `guardrail: true` with `guardrail_mode: output` in the config, and `guardrail: [none, input, output, both]` as an axis in a sweep. The web API takes `guardrail_mode` in the run body, the web page's checkbox still means `input`. The single-turn `cthulhu run` has no output stage.
+The same choice is `guardrail: true` with `guardrail_mode: output` in the config, and `guardrail: [none, input, output, both]` as an axis in a sweep. The web API takes `guardrail_mode` in the run body, and the web page's Setup has a four-way selector for it. The single-turn `cthulhu run` has no output stage.
 
 ## Sweeps
 
@@ -245,11 +245,13 @@ Every cell is a count with its percentage, and a `†` marks n under 10, where t
 
 ## Web interface
 
-`cthulhu serve` starts a local web UI on 127.0.0.1 that wraps the same engine, so a run can be configured and watched in a browser instead of the terminal. It has three steps:
+`cthulhu serve` starts a local web UI on 127.0.0.1 that wraps the same engine, so a run, or a whole sweep, can be configured, watched and read in a browser instead of the terminal. A single run goes through three steps, Setup, Live and Report. Grids of runs have a page of their own, Sweep, described further down. The panel uses a dark deep-sea theme with blood-red accents.
 
-- **Setup** defines the target (paste a system prompt, mark or generate the canary, pick the endpoint), the attacker and judge models, the objectives and the turn budget.
-- **Live** is a board of runs. Each run streams its conversation as it happens over server-sent events: the attacker's message, the target's reply, the per-turn verdict and why the session ended. Start as many runs as you like, from "+ New run", and watch them at once. One run fills the page. Two or more can be shown as a **list** (the runs on the left with a progress bar each, the selected one on the right) or as **columns** (every run side by side, streaming in parallel). The choice is remembered in the browser, and reloading the page brings the board back. Each run has its own cancel button, and "Stop all" cancels every run still going.
-- **Report** shows the before and after for one run, what broke and how, the judge-only results kept for review, and a Markdown export.
+### Setup, Live and Report
+
+- **Setup** defines the target (paste a system prompt, mark or generate the canary, pick the endpoint), the attacker and judge models, the objectives, the turn budget and the **guardrail mode**: a selector with `none`, `input`, `output` and `both`. `none` runs the baseline only. The other three run the baseline and then a guarded campaign in that mode, so the report compares unguarded with guarded. `input` is the default and is what the old on/off checkbox meant.
+- **Live** is a board of runs. Each run streams its conversation as it happens over server-sent events: the attacker's message, the target's reply, the per-turn verdict and why the session ended. Start as many runs as you like, from "+ New run", and watch them at once. One run fills the page. Two or more can be shown as a **list** (the runs on the left with a progress bar each, the selected one on the right) or as **columns** (every run side by side, streaming in parallel). The choice is remembered in the browser, and reloading the page brings the board back. Each run has its own cancel button, and "Stop all" cancels every run still going. Every turn carries a badge: blocked by the guardrail, error (the target call failed, which is never shown as held), objective met (proven by a deterministic check), judge only (amber, the judge flagged it and no check did), canary leaked, and, with an output stage, caught by the output filter (green) or reply changed by the filter.
+- **Report** shows the before and after for one run, what broke and how, turn counts per phase (proven, judge only, blocked, errors, caught), the judge-only turns kept for review with the message and the reply, and a Markdown export. With `none` the report has a baseline only and no guarded section.
 
 <p align="center">
   <img src="assets/ui-board.png" alt="The multi-run board in columns view, three runs against qwen3:8b" width="880">
@@ -263,6 +265,26 @@ Every cell is a count with its percentage, and a `†` marks n under 10, where t
 
 *The baseline held every vector. The guarded run broke at turn 19 through a story-framed jailbreak that got past the guardrail (OWASP LLM01).*
 
+### Sweep
+
+The **Sweep** page runs a grid from the browser. It takes the Setup form as its base (system prompt, canary, judge, attacker) and adds the grid: guardrail modes (any of the four), isolated or campaign, objectives, targets (one `provider:model` per line, empty uses the Setup target), repeats, max turns, workers (1 to 4), strategy and judge mode. The system prompt has to be given as text, and a sweep needs a fixed canary so every run uses the same secret.
+
+A cost preview asks the server for the plan on every change and shows cells x repeats = runs, an upper bound on target calls, how many runs are already on disk, and a rough time from an editable seconds-per-call figure. A turn limit below the corpus size gets a prominent warning: with `max_turns` 6, a corpus campaign never reaches the vectors past turn 6, and the sweep would read as clean without having tried them.
+
+The sweep runs in the server, one at a time, and every finished run is a file under `out/sweeps/<name>`. Closing the page does not stop it, and opening the page again attaches to the running sweep. If the `cthulhu serve` process stops, the sweep stops with it. What finished stays on disk, and starting a sweep with the same name and the same settings carries on where it left off. Cancelling keeps what finished too.
+
+### Results
+
+Under the sweep form, Results reads the finished runs of any sweep in `out/sweeps`, running or older. A folder written by `cthulhu sweep` can be copied there to look at it in the panel. It shows the tables `cthulhu aggregate` writes:
+
+- the attack success rate with its Wilson 95% interval, by configuration, category or vector;
+- the defence matrix by category or by vector, with the change against `none`;
+- the context effect and the session matrix;
+- the reading notes, and **Needs review (judge only)**: every turn the judge flagged and no deterministic check did, with the message sent, the reply and the judge's reason, shown as text, never as markup;
+- downloads of `asr.csv`, `matrix.csv`, `matrix.md` and `review.md`.
+
+How to read it. Proven and judge only are separate columns, and judge only is never added to proven. Caught, a turn where the model's own reply held the secret and the output filter removed it, is its own column. With an output stage, a proven count of 0 is expected by construction, because the filter and the scorer apply the same check, so it does not mean the target is safe: read the caught count and the judge-only review. A `†` marks n under 10, where the count is the information and the rate is not. A cell nothing ran in says `not run`, which is not 0. Intervals that overlap are unclear, they do not mean there is no difference. A running sweep shows partial data, and a cancelled or older one with fewer runs than its grid says it is incomplete.
+
 Run it:
 
 ```
@@ -270,7 +292,7 @@ pip install -e ".[dev,web]"
 cthulhu serve --port 8000
 ```
 
-Then open `http://127.0.0.1:8000`. The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. The HTTP API behind the UI: `POST /runs` (body is the run config, with an optional `label` to name the run) returns a run id, `GET /runs` lists every run with its name and progress plan, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, `POST /runs/cancel-all` stops them all, and `GET /runs/{id}/report` (or `report.md`) returns the report, and `GET /runs/{id}/results.json` (or `results.csv`) returns the flat result records. The CLI commands keep working unchanged.
+Then open `http://127.0.0.1:8000` (8000 is the default port). The server binds to loopback only and checks the Host header, and no model-generated text is ever rendered as HTML, so a jailbroken target cannot script the page. A request over HTTP names no files: `system_prompt_file`, `corpus_dir` and `output_dir` in a run or sweep body are ignored and the system prompt has to be inline text, so a page cannot make the server read a path. A custom corpus stays a command line option. The HTTP API behind the UI: `POST /runs` (body is the run config, with an optional `label` to name the run) returns a run id, `GET /runs` lists every run with its name and progress plan, `GET /runs/{id}/events` is the SSE stream, `GET /runs/{id}` is the status, `POST /runs/{id}/cancel` stops it, `POST /runs/cancel-all` stops them all, and `GET /runs/{id}/report` (or `report.md`) returns the report, and `GET /runs/{id}/results.json` (or `results.csv`) returns the flat result records. For sweeps: `POST /sweeps/plan` returns the plan without starting anything, `POST /sweeps` starts one (a second while one runs is a 409, and so is the same name with a different plan), `GET /sweeps` lists the live and the on-disk sweeps, `GET /sweeps/{id}` is the status, `GET /sweeps/{id}/events` is the SSE progress, `POST /sweeps/{id}/cancel` stops it, `GET /sweeps/{id}/matrix` returns the ASR rows and the matrices from the finished runs, `GET /sweeps/{id}/review` the judge-only turns, and `GET /sweeps/{id}/export/{asr.csv,matrix.csv,matrix.md,review.md}` the downloads. The CLI commands keep working unchanged.
 
 ## Desktop app
 
@@ -312,7 +334,7 @@ cthulhu/
   sweep.py             sweep config, grid expansion, resumable runner
   cli.py               run, attack, sweep, aggregate, list-attacks, serve, app
   desktop.py           the desktop window around the web interface
-  web/                 FastAPI backend (127.0.0.1 only), SSE, and the static UI
+  web/                 FastAPI backend (127.0.0.1 only), SSE, the sweep manager and the static UI
 tools/                 build_exe.ps1 and the packaged entry point
 examples/              config.yaml, sweep.yaml, sweep-base.yaml and target_system_prompt.txt
 samples/               mock and live reports, and a multi-turn report in multiturn/

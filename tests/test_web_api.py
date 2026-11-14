@@ -127,3 +127,38 @@ def test_results_endpoints_serve_json_and_csv():
 def test_results_endpoints_need_a_known_run_and_a_ready_report():
     assert client.get("/runs/nope/results.json").status_code == 404
     assert client.get("/runs/nope/results.csv").status_code == 404
+
+
+def _wait_done(rid, timeout=30):
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        info = client.get(f"/runs/{rid}").json()
+        if info["status"] != "running":
+            return info
+        time.sleep(0.02)
+    raise AssertionError("the run did not finish")
+
+
+def test_runs_do_not_read_files_named_by_the_client(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not read this", encoding="utf-8")
+    only_file = _body(system_prompt_file=str(secret))
+    del only_file["system_prompt_text"]
+    resp = client.post("/runs", json=only_file)
+    assert resp.status_code == 400 and "system prompt as text" in resp.json()["detail"]
+
+    body = _body(system_prompt_file=str(secret), corpus_dir=str(tmp_path))
+    body["attacker"] = {**body["attacker"], "strategy": "corpus", "max_turns": 3}
+    rid = client.post("/runs", json=body).json()["run_id"]       # an empty corpus folder would fail a run
+    info = _wait_done(rid)
+    assert info["status"] == "done" and info["error"] is None
+    events = _drain_events(rid)
+    assert any(e["kind"] == "turn" for e in events)
+    everything = json.dumps(events) + json.dumps(client.get(f"/runs/{rid}/report").json())
+    assert "do not read this" not in everything and str(tmp_path) not in everything
+
+
+def test_the_web_still_runs_a_normal_inline_config():
+    rid = client.post("/runs", json=_body()).json()["run_id"]
+    assert _wait_done(rid)["status"] == "done"

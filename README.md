@@ -221,7 +221,7 @@ The sweep runs in the server, one at a time, and every finished run is a file un
   <img src="assets/screens/sweep.png" alt="Sweep page: the grid of guardrail modes and isolated or campaign mode, repeats, max turns and workers, with a cost preview of 8 cells times 3 repeats, 24 runs and up to 696 target calls" width="880">
 </p>
 
-*The Sweep page with all four guardrail modes, both modes and three repeats: the cost preview reads 8 cells x 3 repeats = 24 runs and up to 696 target calls before anything starts. This is the form with its plan preview. Nothing was run from it.*
+*The Sweep page with all four guardrail modes, isolated and campaign, and three repeats: the cost preview reads 8 cells x 3 repeats = 24 runs and up to 696 target calls before anything starts. This is the form with its plan preview. Nothing was run from it.*
 
 ### Results
 

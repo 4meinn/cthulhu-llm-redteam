@@ -107,7 +107,7 @@ h1 {
 .results-table td.apart { font-weight: 600; }
 .results-table td.overlap { color: var(--muted); font-style: italic; }
 .results-table tr.low td { background: rgba(255, 255, 255, 0.015); }
-.results-exports a { margin-left: 10px; }
+#results-exports a { margin-left: 10px; }
 .review-card { border: 1px solid var(--border); border-left: 3px solid #d9a24b; border-radius: 7px; padding: 8px 12px 10px; margin: 10px 0; background: var(--surface); }
 .review-card h4 { margin: 0 0 3px; font-size: 13px; overflow-wrap: anywhere; }
 .review-card .meta { font-size: 12px; margin: 2px 0; }

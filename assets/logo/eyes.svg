@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 152" role="img" aria-label="Cthulhu eyes">
+  <defs>
+    <path id="eye" d="M48 34 C104 68 156 96 206 114 C174 120 138 116 108 99 C84 85 64 62 48 34 Z"/>
+  </defs>
+  <g fill="#e24b57">
+    <use href="#eye"/>
+    <use href="#eye" transform="translate(560 0) scale(-1 1)"/>
+  </g>
+</svg>

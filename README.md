@@ -488,7 +488,7 @@ cthulhu/
 tools/                 build_exe.ps1, the packaged entry point, the badge and banner sources
 research/              the sweep configs behind the measurement study
 writeups/              the two writeups
-assets/                the banner, the badges and the screenshots
+assets/                the banner, the logo, the badges and the screenshots
 examples/              config.yaml, sweep.yaml, sweep-base.yaml and target_system_prompt.txt
 samples/               mock and live reports, and a multi-turn report in multiturn/
 tests/                 the offline pytest suite

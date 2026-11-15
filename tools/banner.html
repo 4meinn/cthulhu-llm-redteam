@@ -17,6 +17,8 @@
   .frame{position:absolute;inset:14px;border:1px solid var(--border);border-radius:16px;
     box-shadow:inset 0 0 130px rgba(0,0,0,.6), inset 0 0 70px rgba(168,20,39,.16)}
   .sigil{position:absolute;top:50%;left:50%;transform:translate(-50%,-52%);opacity:.14}
+  .eyes{position:relative;margin-bottom:12px;fill:var(--primary);
+    filter:drop-shadow(0 0 12px rgba(168,20,39,.55))}
   .title{
     position:relative;font-family:'JetBrains Mono',monospace;font-weight:800;
     font-size:104px;letter-spacing:.16em;padding-left:.16em;line-height:1;
@@ -42,6 +44,11 @@
       <circle cx="150" cy="150" r="20" fill="#d6304f" stroke="none"/>
       <path d="M150 10 V54 M150 246 V290 M10 150 H54 M246 150 H290
                M52 52 L83 83 M248 52 L217 83 M52 248 L83 217 M248 248 L217 217"/>
+    </svg>
+    <!-- the eyes, same path as assets/logo/eyes.svg -->
+    <svg class="eyes" width="236" height="48" viewBox="40 28 480 98">
+      <path id="eye" d="M48 34 C104 68 156 96 206 114 C174 120 138 116 108 99 C84 85 64 62 48 34 Z"/>
+      <use href="#eye" transform="translate(560 0) scale(-1 1)"/>
     </svg>
     <div class="title">CTHULHU</div>
     <div class="rule"></div>

@@ -1,4 +1,4 @@
-"""Generate small two-segment SVG badges in the Crimson palette.
+"""Generate small two-segment SVG badges in the panel's abyss palette.
 
 textLength pins each label to a fixed width, so the badge keeps its shape
 whatever font GitHub's image renderer falls back to.
@@ -6,11 +6,11 @@ whatever font GitHub's image renderer falls back to.
 import sys
 from pathlib import Path
 
-SURFACE = "#231016"
-VALUE_BG = "#9e1b32"
-BORDER = "#48202c"
-TEXT = "#f4e9ed"
-MUTED = "#bc9aa4"
+SURFACE = "#102025"
+VALUE_BG = "#a81427"
+BORDER = "#244049"
+TEXT = "#e8f1f2"
+MUTED = "#8fa9ae"
 
 CW = 7.1   # approx advance width at 11px monospace
 H = 22

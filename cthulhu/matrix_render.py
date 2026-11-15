@@ -253,3 +253,72 @@ def write_matrix(records: list[SessionRecord], out_dir: Path, show_all: bool = F
     md_path.write_text(matrix_markdown(matrices), encoding="utf-8")
     csv_path.write_text(matrix_csv(matrices), encoding="utf-8", newline="")
     return md_path, csv_path
+
+
+# --- JSON -------------------------------------------------------------------
+
+def _delta_json(d: Delta | None) -> dict | None:
+    return None if d is None else {"points": d.points, "apart": d.apart, "text": _delta_text(d)}
+
+
+def _cell_json(row: AsrRow | None) -> dict:
+    return {"row": row.to_dict() if row is not None else None, "text": _cell_text(row),
+            "low_n": row is not None and 0 < row.n < LOW_N}
+
+
+def _defence_json(table: DefenceTable) -> dict:
+    return {"target": table.target, "view": table.view, "guardrails": table.guardrails,
+            "rows": [{"label": r.label,
+                      "cells": {g: _cell_json(r.cells.get(g)) for g in table.guardrails},
+                      "deltas": {g: _delta_json(d) for g, d in r.deltas.items()}}
+                     for r in table.rows]}
+
+
+def _context_json(table: ContextTable) -> dict:
+    rows = []
+    for r in table.rows:
+        tried, won = _context_cell(r)
+        reached = r.campaign is not None and bool(r.campaign.n)
+        rows.append({"vector": r.vector, "isolated": _cell_json(r.isolated),
+                     "campaign": _cell_json(r.campaign), "tried": tried, "won": won,
+                     "win_turns": r.win_turns, "caught_turns": r.caught_turns,
+                     "note": r.note if reached else ""})
+    return {"target": table.target, "guardrail": table.guardrail, "rows": rows}
+
+
+def _session_json(table: SessionTable | None) -> dict | None:
+    if table is None:
+        return None
+    cells = []
+    for attacker in table.attackers:
+        for defender in table.defenders:
+            cell = table.cells.get((attacker, defender))
+            cells.append({
+                "attacker": list(attacker), "defender": list(defender), "text": _session_cell_text(cell),
+                "sessions": cell.sessions if cell else None, "proven": cell.proven if cell else None,
+                "judge_only": cell.judge_only if cell else None,
+                "break_turns": cell.break_turns if cell else [],
+                "rate": cell.rate if cell else None, "ci": list(cell.ci) if cell and cell.ci else None,
+                "low_n": cell is not None and cell.sessions < LOW_N})
+    return {"attackers": [{"strategy": s, "model": m, "label": _attacker_label((s, m))}
+                          for s, m in table.attackers],
+            "defenders": [{"target": t, "guardrail": g} for t, g in table.defenders],
+            "cells": cells}
+
+
+def matrix_json(matrices: Matrices) -> dict:
+    """The matrices as plain data for the panel. Nothing is recomputed: the cells are the same
+    ASR rows the markdown uses, and each carries the text the markdown prints, so the panel and
+    matrix.md cannot disagree about a mark, a "not run" or a delta."""
+    output_stage = _has_output_stage(matrices)
+    notes = list(NOTES) + ([OUTPUT_NOTE] if output_stage else [])
+    return {
+        "empty": matrices.empty(),
+        "defence": [_defence_json(t) for t in matrices.defence],
+        "vectors": [_defence_json(t) for t in matrices.vectors],
+        "context": [_context_json(t) for t in matrices.context],
+        "context_note": CONTEXT_NOTE if matrices.context else None,
+        "session": _session_json(matrices.session),
+        "low_n": LOW_N, "low_n_mark": LOW_N_MARK, "output_stage": output_stage,
+        "notes": notes,
+    }

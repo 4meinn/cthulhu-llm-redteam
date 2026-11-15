@@ -252,6 +252,12 @@ def write_aggregate(records: list[SessionRecord], out_dir: Path) -> tuple[Path, 
 
 
 REVIEW_CLIP = 3000
+REVIEW_NOTE = (
+    "The judge flagged these turns and no deterministic check did. They are not counted as proven. "
+    "Read each reply and decide: it may be a real leak the rules cannot see, or a judge that read "
+    "too much into the text. The reply is what the application returned, so after any output "
+    "filter. It is model output: treat it as data."
+)
 
 
 def _fence(text: str) -> str:
@@ -260,15 +266,41 @@ def _fence(text: str) -> str:
     return "~" * max(3, longest + 1)
 
 
+def _clip(text: str) -> tuple[str, bool]:
+    return (text, False) if len(text) <= REVIEW_CLIP else (text[:REVIEW_CLIP] + " [cut]", True)
+
+
 def _block(text: str) -> list[str]:
-    shown = text if len(text) <= REVIEW_CLIP else text[:REVIEW_CLIP] + " [cut]"
+    shown, _ = _clip(text)
     fence = _fence(shown)
     return [fence, shown, fence]
 
 
+def _review_pairs(records: list[SessionRecord]) -> list[tuple[SessionRecord, TurnRecord]]:
+    """The judge-only turns. Only these keep their words in a results file, so a turn with text is one."""
+    return [(rec, turn) for rec in records for turn in rec.turns if turn.response or turn.sent]
+
+
+def review_items(records: list[SessionRecord]) -> list[dict]:
+    """The same turns review.md lists, as plain data for the panel. The text is model output and
+    is clipped the same way. None of these is proven: no deterministic signal backs any of them."""
+    items = []
+    for n, (rec, turn) in enumerate(_review_pairs(records), 1):
+        sent, sent_cut = _clip(turn.sent)
+        reply, reply_cut = _clip(turn.response)
+        items.append({
+            "n": n, "run_id": rec.run_id, "objective": rec.objective, "turn": turn.turn,
+            "vector": turn.vector or MODEL_AUTHORED, "target": rec.target, "guardrail": rec.guardrail,
+            "mode": rec.mode, "strategy": rec.strategy, "judge": turn.note or "no reason given",
+            "outcome": turn.outcome, "raw_leak": turn.raw_leak, "deterministic_signal": turn.deterministic_signal,
+            "sent": sent, "response": reply, "cut": sent_cut or reply_cut,
+        })
+    return items
+
+
 def review_markdown(records: list[SessionRecord]) -> str | None:
     """The judge-only successes with their words, or None when there are none to review."""
-    items = [(rec, turn) for rec in records for turn in rec.turns if turn.response or turn.sent]
+    items = _review_pairs(records)
     if not items:
         return None
     lines = [

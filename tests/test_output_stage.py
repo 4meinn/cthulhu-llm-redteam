@@ -144,3 +144,21 @@ def test_the_judge_is_told_a_value_was_removed_only_when_the_output_stage_acted(
     _session([ASK], "none", judge=none, judge_mode="per_turn")
     assert "### Note" not in none.seen[0]
 
+
+
+def test_turn_events_say_when_the_target_call_failed(monkeypatch):
+    from cthulhu import conversation
+    monkeypatch.setattr(conversation.time, "sleep", lambda s: None)
+
+    class Down(LLMClient):
+        def chat(self, messages):
+            from cthulhu.clients import LLMError
+            raise LLMError("down")
+
+    events = []
+    _session([HELLO], "output", target=Down(), events=events)
+    failed = next(data for kind, data in events if kind == "turn")
+    assert failed["error"] is True
+    events.clear()
+    _session([HELLO], "output", events=events)
+    assert next(data for kind, data in events if kind == "turn")["error"] is False

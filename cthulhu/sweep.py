@@ -340,13 +340,15 @@ def run_sweep(
     manager: RunManager | None = None,
     on_progress: Callable[[str, str, SweepResult, int], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
+    on_start: Callable[[str, int], None] | None = None,
     poll: float = 0.05,
 ) -> SweepResult:
     """Run every pending run through the run manager, writing each result file as it finishes.
 
     A run is written only when it completes, so what is on disk is always whole, and running
     the same sweep again does the rest. on_progress(run_id, status, result, total_pending) is
-    called when a run ends. should_stop, or Ctrl+C, cancels what is running and returns.
+    called when a run ends, on_start(run_id, total_pending) when one begins. should_stop, or
+    Ctrl+C, cancels what is running and returns.
     """
     manager = manager or RunManager()
     runs_dir = prepare(describe(sweep, base, cells), sweep.out)
@@ -374,6 +376,8 @@ def run_sweep(
                 spec = todo.pop(0)
                 manager_id = manager.start(spec.cell.run_config(base, spec.id), runner=_cell_runner(spec.cell))
                 active[manager_id] = spec
+                if on_start:
+                    on_start(spec.id, total)
             time.sleep(poll)
             for manager_id, spec in list(active.items()):
                 if manager.get(manager_id).terminal:
